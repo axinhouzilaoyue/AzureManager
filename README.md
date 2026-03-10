@@ -2,6 +2,9 @@
 
 这是一个部署在 Cloudflare Workers 上的 Azure VM 管理面板，用来管理测试订阅下的 Azure 虚拟机。
 
+本项目是对 https://github.com/SIJULY/azure/blob/main/README.md 进行了cf部署的改造。感谢原作者的付出！！
+
+
 ## 安装
 
 安装前请准备：
