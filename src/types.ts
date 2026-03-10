@@ -47,7 +47,6 @@ export interface SessionState {
 export interface AuthContext {
   authenticated: boolean;
   actor: string;
-  authMode: "access" | "local";
   session: SessionState;
 }
 

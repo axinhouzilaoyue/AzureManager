@@ -1,5 +1,4 @@
 # Local development only. Do not commit real secrets.
 SESSION_SECRET=replace-with-a-long-random-string
 ACCOUNT_ENCRYPTION_KEY=replace-with-a-base64url-encoded-32-byte-key
-# Optional. Only needed if you want local password login.
 APP_PASSWORD=replace-me

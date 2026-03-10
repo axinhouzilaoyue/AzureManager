@@ -60,10 +60,32 @@
 
 - `SESSION_SECRET`
 - `ACCOUNT_ENCRYPTION_KEY`
+- `APP_PASSWORD`
 
-如果需要项目内置密码登录，再额外添加：
+这 3 个值都是部署时在 Cloudflare 后台配置，不是在网页登录时输入。
+
+可按下面方式生成：
+
+- `SESSION_SECRET`
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+- `ACCOUNT_ENCRYPTION_KEY`
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
 
 - `APP_PASSWORD`
+
+自己设置一个登录密码即可，例如一段足够长的随机字符串。这个值就是后续网页登录时输入的密码。
+
+注意：
+
+- `SESSION_SECRET` 用于保持登录态，修改后所有用户都需要重新登录
+- `ACCOUNT_ENCRYPTION_KEY` 用于加密保存 Azure `client_secret`，部署后不要随意修改，否则之前保存的账户密钥会无法解密
 
 保存后重新部署。
 
@@ -71,7 +93,7 @@
 
 打开 Cloudflare 分配的地址。
 
-如果配置了 `APP_PASSWORD`，先登录，然后添加 Azure 账户并填写：
+先使用 `APP_PASSWORD` 登录，然后添加 Azure 账户并填写：
 
 - `client_id`
 - `client_secret`

@@ -8,10 +8,6 @@ function getSessionTtlSeconds(env: AppEnv): number {
   return Number(env.SESSION_TTL_SECONDS || 604800);
 }
 
-function getAccessEmail(request: Request): string | null {
-  return request.headers.get("CF-Access-Authenticated-User-Email");
-}
-
 function defaultSession(): SessionState {
   return {
     v: 1,
@@ -58,24 +54,13 @@ async function encodeSession(env: AppEnv, state: SessionState): Promise<string> 
 }
 
 export async function getAuthContext(env: AppEnv, request: Request): Promise<AuthContext> {
-  const accessEmail = getAccessEmail(request);
   const session = await decodeSession(env, request);
   const localAuthenticated = session.localAuthExp !== null && session.localAuthExp > Date.now();
-
-  if (accessEmail) {
-    return {
-      authenticated: true,
-      actor: accessEmail,
-      authMode: "access",
-      session,
-    };
-  }
 
   if (localAuthenticated) {
     return {
       authenticated: true,
       actor: "local-admin",
-      authMode: "local",
       session,
     };
   }
@@ -83,7 +68,6 @@ export async function getAuthContext(env: AppEnv, request: Request): Promise<Aut
   return {
     authenticated: false,
     actor: "anonymous",
-    authMode: "local",
     session,
   };
 }

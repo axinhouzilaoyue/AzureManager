@@ -76,14 +76,6 @@ export default {
 async function handleAuthRoutes(request: Request, env: AppEnv, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/auth/login") {
     const existingAuth = await getAuthContext(env, request);
-    if (existingAuth.authMode === "access" && existingAuth.authenticated) {
-      return jsonResponse({
-        success: true,
-        authMode: "access",
-        actor: existingAuth.actor,
-      });
-    }
-
     const body = await parseRequestBody(request, loginSchema);
     if (body instanceof Response) {
       return body;
@@ -100,8 +92,6 @@ async function handleAuthRoutes(request: Request, env: AppEnv, url: URL): Promis
     return jsonResponse(
       {
         success: true,
-        authMode: "local",
-        actor: "local-admin",
       },
       {
         headers: {
@@ -232,8 +222,6 @@ async function handleApiRoutes(request: Request, env: AppEnv, url: URL): Promise
 
     return jsonResponse({
       loggedIn: auth.authenticated,
-      authMode: auth.authenticated ? auth.authMode : null,
-      actor: auth.authenticated ? auth.actor : null,
       selectedAccountId: selectedAccount?.id ?? null,
       selectedAccountName: selectedAccount?.name ?? null,
     });
