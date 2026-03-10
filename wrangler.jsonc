@@ -25,15 +25,6 @@
     "AZURE_ARM_BASE_URL": "https://management.azure.com",
     "AZURE_AUTH_BASE_URL": "https://login.microsoftonline.com"
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "azure-panel-cf",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
-      "preview_database_id": "REPLACE_WITH_YOUR_D1_PREVIEW_DATABASE_ID",
-      "migrations_dir": "./migrations"
-    }
-  ],
   "durable_objects": {
     "bindings": [
       {
