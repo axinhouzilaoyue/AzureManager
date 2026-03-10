@@ -27,7 +27,7 @@
 
 打开刚创建的 D1 数据库，在 SQL 控制台执行这个文件里的全部 SQL：
 
-- `migrations/dashboard_init.sql`
+- `database/init.sql`
 
 ### 3. 导入仓库
 

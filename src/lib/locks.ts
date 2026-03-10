@@ -1,4 +1,4 @@
-import type { AppEnv } from "../types";
+import type { AppEnv, DurableObjectStubBinding } from "../types";
 import { delay } from "./utils";
 
 interface LockAcquireResponse {
@@ -7,7 +7,7 @@ interface LockAcquireResponse {
   expiresAt?: number;
 }
 
-function getStub(env: AppEnv, lockKey: string): DurableObjectStub {
+function getStub(env: AppEnv, lockKey: string): DurableObjectStubBinding {
   return env.SUBSCRIPTION_LOCK.getByName(lockKey);
 }
 

@@ -38,6 +38,33 @@ export interface WorkflowBinding<TParams = unknown> {
   get(id: string): Promise<WorkflowInstanceHandle>;
 }
 
+export interface SqlQueryResult<TRow = unknown> {
+  results?: TRow[];
+}
+
+export interface SqlStatement {
+  bind(...values: unknown[]): SqlStatement;
+  first<TRow = unknown>(): Promise<TRow | null>;
+  all<TRow = unknown>(): Promise<SqlQueryResult<TRow>>;
+  run(): Promise<unknown>;
+}
+
+export interface SqlDatabase {
+  prepare(query: string): SqlStatement;
+}
+
+export interface AssetBinding {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+export interface DurableObjectStubBinding {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+export interface DurableObjectNamespaceBinding {
+  getByName(name: string): DurableObjectStubBinding;
+}
+
 export interface SessionState {
   v: 1;
   selectedAccountId: string | null;
@@ -182,9 +209,9 @@ export interface AppEnv {
   APP_PASSWORD?: string;
   SESSION_SECRET: string;
   ACCOUNT_ENCRYPTION_KEY: string;
-  DB: D1Database;
-  ASSETS: Fetcher;
-  SUBSCRIPTION_LOCK: DurableObjectNamespace;
+  DB: SqlDatabase;
+  ASSETS: AssetBinding;
+  SUBSCRIPTION_LOCK: DurableObjectNamespaceBinding;
   CREATE_VM_WORKFLOW: WorkflowBinding<CreateVmParams>;
   VM_LIFECYCLE_WORKFLOW: WorkflowBinding<VmLifecycleParams>;
   CHANGE_IP_WORKFLOW: WorkflowBinding<ChangeIpParams>;
