@@ -1,4 +1,6 @@
 {
+  // Cloudflare Worker project configuration.
+  // Cloudflare Workers builds and dashboard Git deployments look for this conventional filename.
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "azure-panel-cf",
   "main": "src/index.ts",
