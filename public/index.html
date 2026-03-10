@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure VM Management Panel</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --panel-bg: #f3f6fb;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --accent: #0f766e;
+      --accent-2: #0f4c81;
+      --card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+      --btn-primary-bg: #0f766e;
+      --btn-primary-border: #0f766e;
+      --btn-primary-hover: #115e59;
+      --btn-secondary-bg: #e2e8f0;
+      --btn-secondary-border: #cbd5e1;
+      --btn-secondary-text: #334155;
+      --btn-outline-bg: #ffffff;
+      --btn-outline-border: #cbd5e1;
+      --btn-outline-text: #0f4c81;
+      --btn-info-bg: #dbeafe;
+      --btn-info-border: #bfdbfe;
+      --btn-info-text: #1d4ed8;
+      --btn-warning-bg: #fef3c7;
+      --btn-warning-border: #fde68a;
+      --btn-warning-text: #92400e;
+      --btn-danger-bg: #fee2e2;
+      --btn-danger-border: #fecaca;
+      --btn-danger-text: #b91c1c;
+      --btn-success-bg: #dcfce7;
+      --btn-success-border: #bbf7d0;
+      --btn-success-text: #166534;
+    }
+
+    body {
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--panel-bg);
+    }
+
+    .shell {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 2rem 1rem 3rem;
+    }
+
+    .hero-card,
+    .glass-card {
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 1rem;
+      box-shadow: var(--card-shadow);
+      background: #fff;
+    }
+
+    .hero-card {
+      overflow: hidden;
+    }
+
+    .hero-strip {
+      background: #0f766e;
+      color: #fff;
+      padding: 1.5rem;
+    }
+
+    .app-hidden {
+      display: none !important;
+    }
+
+    .btn {
+      border-radius: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,
+        transform 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+    }
+
+    .btn:focus-visible {
+      box-shadow: 0 0 0 0.24rem rgba(15, 118, 110, 0.16);
+    }
+
+    .btn-primary {
+      background: var(--btn-primary-bg);
+      border-color: var(--btn-primary-border);
+    }
+
+    .btn-primary:hover:not(:disabled),
+    .btn-primary:active,
+    .btn-primary:focus-visible {
+      background: var(--btn-primary-hover);
+      border-color: var(--btn-primary-hover);
+    }
+
+    .btn-outline-primary {
+      color: var(--btn-outline-text);
+      border-color: rgba(15, 76, 129, 0.24);
+      background: var(--btn-outline-bg);
+    }
+
+    .btn-outline-primary:hover:not(:disabled),
+    .btn-outline-primary:active,
+    .btn-outline-primary:focus-visible {
+      color: #0f4c81;
+      border-color: rgba(15, 76, 129, 0.32);
+      background: rgba(15, 76, 129, 0.08);
+    }
+
+    .btn-secondary {
+      color: var(--btn-secondary-text);
+      background: var(--btn-secondary-bg);
+      border-color: var(--btn-secondary-border);
+    }
+
+    .btn-secondary:hover:not(:disabled),
+    .btn-secondary:active,
+    .btn-secondary:focus-visible {
+      color: #1e293b;
+      background: #d8e0eb;
+      border-color: #bac7d6;
+    }
+
+    .btn-outline-secondary {
+      color: #475569;
+      background: #fff;
+      border-color: rgba(100, 116, 139, 0.24);
+    }
+
+    .btn-outline-secondary:hover:not(:disabled),
+    .btn-outline-secondary:active,
+    .btn-outline-secondary:focus-visible {
+      color: #334155;
+      background: #f8fafc;
+      border-color: rgba(100, 116, 139, 0.32);
+    }
+
+    .btn-success {
+      color: var(--btn-success-text);
+      background: var(--btn-success-bg);
+      border-color: var(--btn-success-border);
+    }
+
+    .btn-success:hover:not(:disabled),
+    .btn-success:active,
+    .btn-success:focus-visible {
+      color: #14532d;
+      background: #ccf4d9;
+      border-color: #9fe5ba;
+    }
+
+    .btn-warning {
+      color: var(--btn-warning-text);
+      background: var(--btn-warning-bg);
+      border-color: var(--btn-warning-border);
+    }
+
+    .btn-warning:hover:not(:disabled),
+    .btn-warning:active,
+    .btn-warning:focus-visible {
+      color: #78350f;
+      background: #fde9a4;
+      border-color: #fcd34d;
+    }
+
+    .btn-info {
+      color: var(--btn-info-text);
+      background: var(--btn-info-bg);
+      border-color: var(--btn-info-border);
+    }
+
+    .btn-info:hover:not(:disabled),
+    .btn-info:active,
+    .btn-info:focus-visible {
+      color: #1e40af;
+      background: #cde2fe;
+      border-color: #93c5fd;
+    }
+
+    .btn-danger {
+      color: var(--btn-danger-text);
+      background: var(--btn-danger-bg);
+      border-color: var(--btn-danger-border);
+    }
+
+    .btn-danger:hover:not(:disabled),
+    .btn-danger:active,
+    .btn-danger:focus-visible {
+      color: #991b1b;
+      background: #fecaca;
+      border-color: #fca5a5;
+    }
+
+    .btn-outline-danger {
+      color: #b91c1c;
+      background: #fff;
+      border-color: rgba(220, 38, 38, 0.22);
+    }
+
+    .btn-outline-danger:hover:not(:disabled),
+    .btn-outline-danger:active,
+    .btn-outline-danger:focus-visible {
+      color: #991b1b;
+      background: #fef2f2;
+      border-color: rgba(220, 38, 38, 0.32);
+    }
+
+    .btn:disabled {
+      color: #94a3b8;
+      background: #e5e7eb;
+      border-color: #d1d5db;
+      box-shadow: none;
+      transform: none;
+      opacity: 1;
+    }
+
+    .table-hover tbody tr.table-active td {
+      background-color: rgba(15, 118, 110, 0.12) !important;
+    }
+
+    .table-hover tbody tr.table-active td:first-child {
+      box-shadow: inset 4px 0 0 #0f766e;
+    }
+
+    .table-hover tbody tr {
+      cursor: pointer;
+    }
+
+    .log-surface {
+      height: 240px;
+      background: #0f172a;
+      color: #dbeafe;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9rem;
+    }
+
+    .section-title {
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .guide-surface {
+      background: #0f172a;
+      color: #dbeafe;
+      border-radius: 1rem;
+      padding: 0.875rem 1rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.84rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .account-table th,
+    .account-table td {
+      vertical-align: middle;
+    }
+
+    .account-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .account-name-cell {
+      max-width: 260px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-summary-cell {
+      max-width: 520px;
+    }
+
+    .account-expiration-cell {
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .account-summary-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-summary-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-actions {
+      white-space: nowrap;
+    }
+
+    .account-inline-hint {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: #64748b;
+      background: #eef2f7;
+      white-space: nowrap;
+    }
+
+    .context-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.9rem;
+      padding: 0.25rem 0.75rem;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.08);
+      color: #115e59;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .context-chip[data-empty="true"] {
+      border-color: rgba(148, 163, 184, 0.2);
+      background: #f8fafc;
+      color: #64748b;
+    }
+
+    .desktop-table {
+      display: block;
+    }
+
+    .mobile-card-list {
+      display: none;
+    }
+
+    .mobile-card {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+      padding: 1rem;
+    }
+
+    .mobile-card.active {
+      border-color: rgba(15, 118, 110, 0.35);
+      box-shadow: 0 14px 36px rgba(15, 118, 110, 0.12);
+      background: rgba(240, 253, 250, 0.95);
+    }
+
+    .mobile-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.75rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .mobile-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .mobile-card-actions .btn {
+      flex: 1 1 calc(50% - 0.25rem);
+    }
+
+    .log-collapsed-hint {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .create-vm-action-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .create-vm-btn {
+      min-width: 8rem;
+    }
+
+    .startup-script-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .startup-script-status {
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .startup-script-status[data-state="dirty"] {
+      color: #9a6700;
+    }
+
+    .startup-script-status[data-state="saving"] {
+      color: #0f4c81;
+    }
+
+    .startup-script-status[data-state="error"] {
+      color: #b91c1c;
+    }
+
+    body.authenticated .hero-strip {
+      padding: 0.85rem 1.1rem;
+    }
+
+    body.authenticated .hero-strip .small {
+      display: none;
+    }
+
+    body.authenticated .hero-strip h1 {
+      margin-bottom: 0.15rem !important;
+      font-size: 1.45rem;
+    }
+
+    @media (max-width: 767.98px) {
+      .shell {
+        padding: 1rem 0.75rem 2rem;
+      }
+
+      .hero-strip {
+        padding: 1rem;
+      }
+
+      .desktop-table {
+        display: none;
+      }
+
+      .mobile-card-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .account-inline-hint,
+      .context-chip {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .create-vm-action-row {
+        display: block;
+      }
+
+      .create-vm-btn {
+        width: 100%;
+      }
+
+      .startup-script-toolbar {
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero-card mb-4">
+      <div class="hero-strip">
+        <div class="d-flex align-items-center gap-3">
+          <div>
+            <h1 class="h2 mb-1">Azure VM Management Panel</h1>
+          </div>
+        </div>
+      </div>
+      <div id="loginShell" class="p-4">
+        <div class="row justify-content-center">
+          <div class="col-lg-5" id="loginPanel">
+            <div class="glass-card h-100">
+              <div class="card-body p-4">
+                <div class="section-title">登录</div>
+                <h2 class="h4 mb-3">本地管理员登录</h2>
+                <form id="loginForm">
+                  <div class="mb-3">
+                    <label for="password" class="form-label">密码</label>
+                    <input id="password" type="password" class="form-control" autocomplete="current-password" required>
+                  </div>
+                  <button class="btn btn-primary w-100" type="submit">登录</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="appShell" class="app-hidden">
+      <div class="glass-card mb-4">
+        <div class="card-body p-0">
+          <div class="d-flex justify-content-between align-items-center px-4 pt-4 pb-3 flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <div class="section-title mb-0">账户列表</div>
+              <div class="account-inline-hint">选择后即可读取区域与虚拟机列表</div>
+              <div id="accountSelectionContext" class="context-chip" data-empty="true">当前账户：未选择</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button id="addAccountBtn" class="btn btn-primary" type="button">添加 Azure 账户</button>
+              <button id="queryAllStatusBtn" class="btn btn-outline-primary" type="button">一键检查全部账户</button>
+              <button id="logoutBtn" class="btn btn-outline-danger" type="button">登出</button>
+            </div>
+          </div>
+          <div class="table-responsive desktop-table">
+            <table class="table table-striped table-hover mb-0 account-table">
+              <colgroup>
+                <col style="width: 22%">
+                <col style="width: 36%">
+                <col style="width: 12%">
+                <col style="width: 30%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>账户名称</th>
+                  <th>订阅信息</th>
+                  <th>到期日期</th>
+                  <th class="text-center">操作</th>
+                </tr>
+              </thead>
+              <tbody id="accountList"></tbody>
+            </table>
+          </div>
+          <div id="accountMobileList" class="mobile-card-list p-3"></div>
+        </div>
+      </div>
+
+      <div class="glass-card mb-4">
+        <div class="card-body p-0">
+          <div class="d-flex justify-content-between align-items-center px-4 pt-4 pb-3 flex-wrap gap-2">
+            <div>
+              <div class="section-title mb-1">虚拟机列表</div>
+            </div>
+            <button id="refreshVms" class="btn btn-sm btn-outline-primary" type="button" disabled>刷新列表</button>
+          </div>
+          <div class="table-responsive desktop-table">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>资源组</th>
+                  <th>区域</th>
+                  <th>实例类型</th>
+                  <th>运行时间</th>
+                  <th>公网 IP</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="vmList"></tbody>
+            </table>
+          </div>
+          <div id="vmMobileList" class="mobile-card-list p-3 pt-0"></div>
+          <div class="px-4 py-3 border-top d-flex flex-wrap gap-2 justify-content-center">
+            <button type="button" id="startBtn" class="btn btn-secondary" disabled>启动</button>
+            <button type="button" id="stopBtn" class="btn btn-secondary" disabled>停止</button>
+            <button type="button" id="restartBtn" class="btn btn-secondary" disabled>重启</button>
+            <button type="button" id="changeIpBtn" class="btn btn-secondary" disabled>更换 IP</button>
+            <button type="button" id="deleteBtn" class="btn btn-secondary" disabled>删除资源组</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card mb-4">
+        <div class="card-body p-4">
+          <div class="section-title mb-3">创建实例</div>
+          <div class="row g-3 align-items-center mb-3">
+            <div class="col-lg-2">
+              <label class="form-label mb-lg-0">选择区域</label>
+            </div>
+            <div class="col-lg-4">
+              <input type="search" id="regionSearch" class="form-control" placeholder="搜索区域，例如 japan / eastus" disabled>
+            </div>
+            <div class="col-lg-6">
+              <select class="form-select" id="regionSelector" disabled>
+                <option>请先选择账户</option>
+              </select>
+            </div>
+          </div>
+          <details id="userDataDetails">
+            <summary class="small text-secondary mb-3">编辑开机脚本 (全局默认)</summary>
+            <textarea id="userData" class="form-control" rows="10"></textarea>
+            <div class="startup-script-toolbar mt-3">
+              <div id="userDataSaveStatus" class="startup-script-status" data-state="saved">登录后自动加载默认脚本</div>
+              <button id="saveUserDataBtn" class="btn btn-outline-primary btn-sm" type="button">保存脚本</button>
+            </div>
+          </details>
+          <div class="mt-3 create-vm-action-row">
+            <button id="createVmBtn" class="btn btn-primary create-vm-btn" type="button" disabled>创建实例</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <div class="section-title mb-1">任务日志</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button id="toggleLogBtn" class="btn btn-sm btn-outline-secondary" type="button">展开</button>
+              <button id="clearLogBtn" class="btn btn-sm btn-outline-danger" type="button">清除</button>
+            </div>
+          </div>
+          <div id="logCollapsedHint" class="log-collapsed-hint app-hidden">暂无任务日志，执行写操作或发生错误时会自动展开。</div>
+          <div id="logPanelContent" class="mt-3">
+            <pre id="logOutput" class="log-surface form-control mb-0"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="createVmModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">创建新的虚拟机</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="createVmForm">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">已选区域</label>
+                <input type="text" id="vmRegionDisplay" class="form-control" readonly>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label">实例类型</label>
+                <select id="vmSize" class="form-select" required>
+                  <option value="Standard_B1s">B1s (1 vCPU, 1 GB RAM)</option>
+                  <option value="Standard_B1ms">B1ms (1 vCPU, 2 GB RAM)</option>
+                  <option value="Standard_B2s">B2s (2 vCPU, 4 GB RAM)</option>
+                  <option value="Standard_D2s_v3">D2s v3 (2 vCPU, 8 GB RAM)</option>
+                  <option value="Standard_F2s_v2">F2s v2 (2 vCPU, 4 GB RAM)</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">操作系统</label>
+                <select id="vmOs" class="form-select" required>
+                  <option value="debian12" selected>Debian 12</option>
+                  <option value="debian11">Debian 11</option>
+                  <option value="ubuntu22">Ubuntu 22.04 LTS</option>
+                  <option value="ubuntu20">Ubuntu 20.04 LTS</option>
+                </select>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label">硬盘大小 (GB)</label>
+                <select id="vmDiskSize" class="form-select" required>
+                  <option value="30">30 GB</option>
+                  <option value="64" selected>64 GB</option>
+                  <option value="128">128 GB</option>
+                </select>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">公网 IP 类型</label>
+              <select id="ipType" class="form-select">
+                <option value="Static">Static</option>
+                <option value="Dynamic">Dynamic</option>
+              </select>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" id="confirmCreateVmBtn" class="btn btn-primary">确认创建</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">添加 Azure 账户</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addAccountForm">
+            <div class="mb-2">
+              <label class="form-label">账户名称</label>
+              <input type="text" id="accountName" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">客户端 ID (appId)</label>
+              <input type="text" id="clientId" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">客户端密码</label>
+              <input type="password" id="clientSecret" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">租户 ID (tenantId)</label>
+              <input type="text" id="tenantId" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">订阅 ID (subscriptionId)</label>
+              <input type="text" id="subscriptionId" class="form-control form-control-sm" required>
+            </div>
+            <div id="accountCheckResult" class="small text-secondary rounded border px-3 py-2 mt-3 mb-0">
+              请先点击“检查账户”。通过检查后才允许保存。
+            </div>
+          </form>
+          <details class="mt-3">
+            <summary class="small text-secondary">不知道这些值从哪里获取？展开查看 Azure CLI / Portal 指引</summary>
+            <div class="small text-secondary mt-3">
+              `subscriptionId` 和 `tenantId` 属于你自己的 Azure 订阅信息，不会也不应该从 GitHub 仓库里推断出来。
+            </div>
+            <div class="guide-surface mt-2"># 1) 登录 Azure
+az login
+
+# 2) 查看当前订阅和租户
+az account show --query "{subscriptionId:id, tenantId:tenantId, subscriptionName:name}" --output json
+
+# 3) 为当前订阅创建本项目使用的服务主体
+SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
+az ad sp create-for-rbac \
+  --name "azure-panel-cf" \
+  --role "Contributor" \
+  --scopes "/subscriptions/$SUBSCRIPTION_ID"</div>
+            <div class="small text-secondary mt-2">
+              命令返回的 `appId` 填到“客户端 ID”，`password` 填到“客户端密码”，`tenant` 填到“租户 ID”；`subscriptionId` 则来自 `az account show` 或 Azure Portal 的 Subscriptions 页面。
+            </div>
+          </details>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-primary" id="checkAccountBtn">检查账户</button>
+          <button type="submit" class="btn btn-primary" id="saveAccountBtn" form="addAccountForm" disabled>检查通过后保存账户</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="editAccountModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">修改账户信息</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editAccountForm">
+            <input type="hidden" id="editAccountId">
+            <div class="mb-3">
+              <label class="form-label">账户名称</label>
+              <input type="text" class="form-control" id="editAccountName" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">到期日期 (可选)</label>
+              <input type="date" class="form-control" id="editExpirationDate">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" id="confirmEditAccountBtn" class="btn btn-primary">保存更改</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="vmActionModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="vmActionModalTitle" class="modal-title">确认操作</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="vmActionModalMessage" class="mb-3 text-body"></div>
+          <div class="small text-secondary">
+            <div><span id="vmActionPrimaryLabel">虚拟机</span>：<span id="vmActionVmName" class="fw-semibold text-body"></span></div>
+            <div id="vmActionSecondaryRow"><span id="vmActionSecondaryLabel">资源组</span>：<span id="vmActionResourceGroup" class="fw-semibold text-body"></span></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="button" id="confirmVmActionBtn" class="btn btn-primary">确认执行</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
