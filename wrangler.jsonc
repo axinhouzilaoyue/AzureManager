@@ -4,6 +4,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "azure-panel-cf",
   "main": "src/index.ts",
+  "keep_vars": true,
   "compatibility_date": "2026-03-10",
   "compatibility_flags": [
     "nodejs_compat"
@@ -27,6 +28,13 @@
     "AZURE_ARM_BASE_URL": "https://management.azure.com",
     "AZURE_AUTH_BASE_URL": "https://login.microsoftonline.com"
   },
+  // Use automatic provisioning so shared deployments get a DB binding
+  // without committing account-specific D1 IDs into the repository.
+  "d1_databases": [
+    {
+      "binding": "DB"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

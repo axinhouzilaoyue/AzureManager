@@ -10,7 +10,7 @@
 安装前请准备：
 
 - Cloudflare 账号
-- GitHub 或 GitLab 仓库
+- 一个你自己可访问的 GitHub 或 GitLab 仓库副本
 - 一个 Azure 测试订阅
 - 一个可用的 Azure Service Principal
 - `client_id`
@@ -18,21 +18,7 @@
 - `tenant_id`
 - `subscription_id`
 
-### 1. 创建 D1 数据库
-
-进入 Cloudflare Dashboard：
-
-`Storage & Databases` -> `D1`
-
-创建一个新的数据库，例如 `azure-panel-cf`。
-
-### 2. 初始化数据库
-
-打开刚创建的 D1 数据库，在 SQL 控制台执行这个文件里的全部 SQL：
-
-- `database/init.sql`
-
-### 3. 导入仓库
+### 1. 导入仓库并首次部署
 
 进入 Cloudflare Dashboard：
 
@@ -40,20 +26,29 @@
 
 连接 GitHub 或 GitLab，选择当前仓库并完成导入。
 
-### 4. 绑定数据库
+本项目的 `wrangler.jsonc` 已声明 `DB` 这个 D1 绑定，首次部署时 Cloudflare 会按 Worker 配置自动创建或链接对应资源。
 
-进入 Worker：
+如果你不想让后续每次 Git push 都自动触发 Cloudflare build/deploy，首次部署成功后进入：
 
-`Settings` -> `Bindings` -> `Add binding`
+`Settings` -> `Builds` -> `Disconnect`
 
-添加 D1 绑定：
+### 2. 初始化数据库
 
-- Binding name: `DB`
-- Database: 选择上一步创建的 D1 数据库
+首次部署成功后，进入：
 
-保存后重新部署。
+`Storage & Databases` -> `D1`
 
-### 5. 配置 Secrets
+找到当前 Worker 自动创建或绑定的数据库，然后在 SQL 控制台执行这个文件里的全部 SQL：
+
+- `database/init.sql`
+
+如果你在 D1 列表里一时无法确认是哪一个数据库，也可以进入 Worker 的：
+
+`Settings` -> `Bindings`
+
+确认 `DB` 绑定指向的具体数据库。
+
+### 3. 配置运行时变量
 
 进入：
 
@@ -66,6 +61,7 @@
 - `APP_PASSWORD`
 
 这 3 个值都是部署时在 Cloudflare 后台配置，不是在网页登录时输入。
+本项目已启用 `keep_vars: true`，后续重新部署时会保留你在 Dashboard 中手动添加的普通 Variables。
 
 可按下面方式生成：
 
@@ -92,7 +88,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 保存后重新部署。
 
-### 6. 首次使用
+### 4. 首次使用
 
 打开 Cloudflare 分配的地址。
 
