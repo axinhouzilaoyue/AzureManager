@@ -18,7 +18,21 @@
 - `tenant_id`
 - `subscription_id`
 
-### 1. 导入仓库并首次部署
+### 1. 手动创建 D1 数据库
+
+进入 Cloudflare Dashboard：
+
+`Storage & Databases` -> `D1`
+
+创建一个新的数据库，名称可自定义。
+
+### 2. 初始化数据库
+
+打开刚创建的 D1 数据库，在 SQL 控制台执行这个文件里的全部 SQL：
+
+- `database/init.sql`
+
+### 3. 导入仓库并首次部署
 
 进入 Cloudflare Dashboard：
 
@@ -26,29 +40,24 @@
 
 连接 GitHub 或 GitLab，选择当前仓库并完成导入。
 
-本项目的 `wrangler.jsonc` 已声明 `DB` 这个 D1 绑定，首次部署时 Cloudflare 会按 Worker 配置自动创建或链接对应资源。
-
 如果你不想让后续每次 Git push 都自动触发 Cloudflare build/deploy，首次部署成功后进入：
 
 `Settings` -> `Builds` -> `Disconnect`
 
-### 2. 初始化数据库
+### 4. 手动绑定 D1 数据库
 
-首次部署成功后，进入：
-
-`Storage & Databases` -> `D1`
-
-找到当前 Worker 自动创建或绑定的数据库，然后在 SQL 控制台执行这个文件里的全部 SQL：
-
-- `database/init.sql`
-
-如果你在 D1 列表里一时无法确认是哪一个数据库，也可以进入 Worker 的：
+进入刚创建好的 Worker：
 
 `Settings` -> `Bindings`
 
-确认 `DB` 绑定指向的具体数据库。
+添加一个 D1 绑定：
 
-### 3. 配置运行时变量
+- Binding name: `DB`
+- Database: 选择你刚才手动创建的 D1 数据库
+
+保存后重新部署。
+
+### 5. 配置运行时变量
 
 进入：
 
@@ -88,7 +97,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 保存后重新部署。
 
-### 4. 首次使用
+### 6. 首次使用
 
 打开 Cloudflare 分配的地址。
 

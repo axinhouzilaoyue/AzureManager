@@ -28,13 +28,8 @@
     "AZURE_ARM_BASE_URL": "https://management.azure.com",
     "AZURE_AUTH_BASE_URL": "https://login.microsoftonline.com"
   },
-  // Use automatic provisioning so shared deployments get a DB binding
-  // without committing account-specific D1 IDs into the repository.
-  "d1_databases": [
-    {
-      "binding": "DB"
-    }
-  ],
+  // Intentionally omit d1_databases here.
+  // Create the D1 database and bind "DB" manually in the Cloudflare dashboard.
   "durable_objects": {
     "bindings": [
       {
