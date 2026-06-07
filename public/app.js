@@ -69,6 +69,10 @@ document.addEventListener("DOMContentLoaded", () => {
     vmActionSecondaryLabel: document.getElementById("vmActionSecondaryLabel"),
     vmActionResourceGroup: document.getElementById("vmActionResourceGroup"),
     confirmVmActionBtn: document.getElementById("confirmVmActionBtn"),
+    accountCountStat: document.getElementById("accountCountStat"),
+    vmCountStat: document.getElementById("vmCountStat"),
+    runningVmCountStat: document.getElementById("runningVmCountStat"),
+    regionCountStat: document.getElementById("regionCountStat"),
   };
 
   let selectedVmRow = null;
@@ -132,6 +136,28 @@ document.addEventListener("DOMContentLoaded", () => {
       .replaceAll("'", "&#39;");
   }
 
+  function refreshIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+      window.lucide.createIcons({
+        attrs: {
+          "stroke-width": 2,
+        },
+      });
+    }
+  }
+
+  function setMetric(element, value) {
+    if (element) {
+      element.textContent = String(value);
+    }
+  }
+
+  function resetResourceMetrics() {
+    setMetric(UI.vmCountStat, "--");
+    setMetric(UI.runningVmCountStat, "--");
+    setMetric(UI.regionCountStat, "--");
+  }
+
   function log(message, type = "info") {
     const now = new Date().toLocaleTimeString();
     const color =
@@ -158,7 +184,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function setLogExpanded(expanded) {
     UI.logPanelContent.classList.toggle("app-hidden", !expanded);
     UI.logCollapsedHint.classList.toggle("app-hidden", expanded);
-    UI.toggleLogBtn.textContent = expanded ? "折叠" : "展开";
+    UI.toggleLogBtn.innerHTML = expanded
+      ? '<i data-lucide="panel-bottom-close"></i>折叠'
+      : '<i data-lucide="panel-bottom-open"></i>展开';
+    refreshIcons();
     syncLogHint();
   }
 
@@ -440,6 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
     UI.regionSelector.innerHTML = `<option>${escapeHtml(placeholder)}</option>`;
     UI.regionSelector.disabled = true;
     UI.createVmBtn.disabled = true;
+    setMetric(UI.regionCountStat, selectedAccountId ? "0" : "--");
   }
 
   function setVmElementSelected(element, isSelected) {
@@ -497,6 +527,8 @@ document.addEventListener("DOMContentLoaded", () => {
       startupScriptLoaded = false;
       lastSavedStartupScript = "";
       UI.userData.value = "";
+      setMetric(UI.accountCountStat, 0);
+      resetResourceMetrics();
       syncStartupScriptSaveState();
     }
   }
@@ -510,6 +542,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadAccounts() {
     const accounts = await apiCall("/api/accounts", { method: "GET", headers: {} });
     accountsCache = accounts;
+    setMetric(UI.accountCountStat, accounts.length);
     UI.accountList.innerHTML = "";
     UI.accountMobileList.innerHTML = "";
 
@@ -536,10 +569,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="account-expiration-cell">${account.expirationDate ? escapeHtml(account.expirationDate) : "--"}</td>
         <td class="text-center account-actions">
           <div class="d-flex justify-content-center gap-1">
-            <button class="btn btn-success btn-sm" data-action="select">选择</button>
-            <button class="btn btn-warning btn-sm" data-action="edit">修改</button>
-            <button class="btn btn-info btn-sm" data-action="check">检查</button>
-            <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
+            <button class="btn btn-success btn-sm" data-action="select"><i data-lucide="check"></i>选择</button>
+            <button class="btn btn-warning btn-sm" data-action="edit"><i data-lucide="pencil"></i>修改</button>
+            <button class="btn btn-info btn-sm" data-action="check"><i data-lucide="activity"></i>检查</button>
+            <button class="btn btn-danger btn-sm" data-action="delete"><i data-lucide="trash-2"></i>删除</button>
           </div>
         </td>`;
       UI.accountList.appendChild(row);
@@ -563,14 +596,15 @@ document.addEventListener("DOMContentLoaded", () => {
           <span>到期日期 ${escapeHtml(account.expirationDate || "--")}</span>
         </div>
         <div class="mobile-card-actions mt-3">
-          <button class="btn btn-success btn-sm" data-action="select">选择</button>
-          <button class="btn btn-warning btn-sm" data-action="edit">修改</button>
-          <button class="btn btn-info btn-sm" data-action="check">检查</button>
-          <button class="btn btn-danger btn-sm" data-action="delete">删除</button>
+          <button class="btn btn-success btn-sm" data-action="select"><i data-lucide="check"></i>选择</button>
+          <button class="btn btn-warning btn-sm" data-action="edit"><i data-lucide="pencil"></i>修改</button>
+          <button class="btn btn-info btn-sm" data-action="check"><i data-lucide="activity"></i>检查</button>
+          <button class="btn btn-danger btn-sm" data-action="delete"><i data-lucide="trash-2"></i>删除</button>
         </div>
       `;
       UI.accountMobileList.appendChild(mobileCard);
     });
+    refreshIcons();
   }
 
   async function loadRegions() {
@@ -583,6 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
     UI.regionSelector.disabled = true;
     UI.createVmBtn.disabled = true;
     const regions = await apiCall("/api/regions", { method: "GET", headers: {} });
+    setMetric(UI.regionCountStat, regions.length);
     if (regions.length === 0) {
       resetRegionSelection("当前订阅没有可用区域");
       return;
@@ -597,6 +632,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadVms() {
     if (!selectedAccountId) {
+      setMetric(UI.vmCountStat, "--");
+      setMetric(UI.runningVmCountStat, "--");
       UI.vmList.innerHTML =
         '<tr><td colspan="7" class="text-center text-secondary py-4">请先选择账户</td></tr>';
       UI.vmMobileList.innerHTML =
@@ -612,6 +649,11 @@ document.addEventListener("DOMContentLoaded", () => {
       '<div class="mobile-card text-center text-secondary">正在加载虚拟机列表...</div>';
 
     const virtualMachines = await apiCall("/api/vms", { method: "GET", headers: {} });
+    setMetric(UI.vmCountStat, virtualMachines.length);
+    setMetric(
+      UI.runningVmCountStat,
+      virtualMachines.filter((virtualMachine) => String(virtualMachine.status).toLowerCase().includes("running")).length,
+    );
     UI.vmList.innerHTML = "";
     UI.vmMobileList.innerHTML = "";
 
@@ -650,6 +692,7 @@ document.addEventListener("DOMContentLoaded", () => {
       mobileCard.addEventListener("click", () => selectVmElement(mobileCard));
       UI.vmMobileList.appendChild(mobileCard);
     });
+    refreshIcons();
   }
 
   function updateActionButtons() {
@@ -699,18 +742,22 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         await loadRegions();
       } catch (error) {
+        setMetric(UI.regionCountStat, "--");
         resetRegionSelection("获取区域失败");
       }
 
       try {
         await loadVms();
       } catch (error) {
+        setMetric(UI.vmCountStat, "--");
+        setMetric(UI.runningVmCountStat, "--");
         UI.vmList.innerHTML =
           '<tr><td colspan="7" class="text-center text-danger py-4">加载虚拟机失败，请检查账户权限</td></tr>';
         UI.vmMobileList.innerHTML =
           '<div class="mobile-card text-center text-danger">加载虚拟机失败，请检查账户权限</div>';
       }
     } else {
+      resetResourceMetrics();
       resetRegionSelection("请先选择账户");
       UI.vmList.innerHTML =
         '<tr><td colspan="7" class="text-center text-secondary py-4">请先选择账户</td></tr>';
@@ -1116,6 +1163,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setLogExpanded(true);
   UI.userData.value = "";
   syncStartupScriptSaveState();
+  refreshIcons();
   refreshAll().catch((error) => {
     setStartupScriptStatus("error", "加载失败，请刷新重试");
     log(error.message || String(error), "error");

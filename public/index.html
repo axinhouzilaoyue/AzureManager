@@ -8,254 +8,494 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     :root {
-      --panel-bg: #f3f6fb;
-      --ink: #0f172a;
-      --muted: #64748b;
-      --accent: #0f766e;
-      --accent-2: #0f4c81;
-      --card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-      --btn-primary-bg: #0f766e;
-      --btn-primary-border: #0f766e;
-      --btn-primary-hover: #115e59;
-      --btn-secondary-bg: #e2e8f0;
-      --btn-secondary-border: #cbd5e1;
-      --btn-secondary-text: #334155;
-      --btn-outline-bg: #ffffff;
-      --btn-outline-border: #cbd5e1;
-      --btn-outline-text: #0f4c81;
-      --btn-info-bg: #dbeafe;
-      --btn-info-border: #bfdbfe;
-      --btn-info-text: #1d4ed8;
-      --btn-warning-bg: #fef3c7;
-      --btn-warning-border: #fde68a;
-      --btn-warning-text: #92400e;
-      --btn-danger-bg: #fee2e2;
-      --btn-danger-border: #fecaca;
-      --btn-danger-text: #b91c1c;
-      --btn-success-bg: #dcfce7;
-      --btn-success-border: #bbf7d0;
-      --btn-success-text: #166534;
+      color-scheme: light;
+      --page-bg: #f5f5f7;
+      --surface: rgba(255, 255, 255, 0.86);
+      --surface-strong: #ffffff;
+      --surface-soft: #f8f8fb;
+      --line: rgba(29, 29, 31, 0.1);
+      --line-strong: rgba(29, 29, 31, 0.18);
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --muted-strong: #424245;
+      --blue: #0071e3;
+      --blue-hover: #0077ed;
+      --green: #2f9e44;
+      --amber: #b25a00;
+      --red: #d92d20;
+      --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.08);
+      --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.06);
+      --radius: 8px;
+    }
+
+    * {
+      letter-spacing: 0;
     }
 
     body {
       min-height: 100vh;
       color: var(--ink);
-      background: var(--panel-bg);
+      background: var(--page-bg);
+      background-image: linear-gradient(180deg, #ffffff 0, #f5f5f7 360px);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
+      text-rendering: optimizeLegibility;
     }
 
     .shell {
-      max-width: 1380px;
+      width: min(1440px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 2rem 1rem 3rem;
+      padding: 20px 0 40px;
     }
 
-    .hero-card,
-    .glass-card {
-      border: 1px solid rgba(148, 163, 184, 0.16);
-      border-radius: 1rem;
-      box-shadow: var(--card-shadow);
-      background: #fff;
+    .topbar {
+      position: sticky;
+      top: 12px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      min-height: 64px;
+      margin-bottom: 18px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+      backdrop-filter: saturate(180%) blur(20px);
     }
 
-    .hero-card {
-      overflow: hidden;
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
     }
 
-    .hero-strip {
-      background: #0f766e;
+    .min-w-0 {
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: var(--radius);
       color: #fff;
-      padding: 1.5rem;
+      background: linear-gradient(135deg, #1d1d1f, #0071e3);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      flex: 0 0 auto;
+      font-weight: 700;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .brand-subtitle {
+      margin: 0.15rem 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.2;
+    }
+
+    .topbar-actions,
+    .panel-actions,
+    .action-bar,
+    .button-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    #logoutBtn {
+      display: none;
+    }
+
+    body.authenticated #logoutBtn {
+      display: inline-flex;
+    }
+
+    .status-pill,
+    .context-chip,
+    .account-inline-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 32px;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--muted-strong);
+      font-size: 0.84rem;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(47, 158, 68, 0.12);
+    }
+
+    .context-chip {
+      border-color: rgba(0, 113, 227, 0.24);
+      background: rgba(0, 113, 227, 0.08);
+      color: #0058b0;
+    }
+
+    .context-chip[data-empty="true"] {
+      border-color: var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--muted);
+    }
+
+    .login-shell {
+      display: grid;
+      min-height: calc(100vh - 150px);
+      place-items: center;
+      padding: 32px 0;
+    }
+
+    .login-panel {
+      width: min(460px, 100%);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    .login-panel .card-body {
+      padding: 28px;
     }
 
     .app-hidden {
       display: none !important;
     }
 
+    .overview {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(520px, 1.8fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .overview-copy,
+    .metric-grid {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow-panel);
+      backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    .overview-copy {
+      display: flex;
+      min-height: 174px;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 22px;
+    }
+
+    .eyebrow,
+    .section-title {
+      margin-bottom: 0.45rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .page-title {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 760;
+      line-height: 1.08;
+    }
+
+    .page-copy {
+      margin: 0.6rem 0 0;
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 0.96rem;
+      line-height: 1.55;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      overflow: hidden;
+    }
+
+    .metric-tile {
+      min-height: 174px;
+      padding: 20px;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .metric-tile:last-child {
+      border-right: 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .metric-value {
+      margin-top: 0.8rem;
+      font-size: 2.35rem;
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .metric-note {
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.35;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-strong);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+    }
+
+    .panel-body {
+      padding: 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(248, 248, 251, 0.82);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 760;
+    }
+
+    .panel-subtitle {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
     .btn {
-      border-radius: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.01em;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.42rem;
+      min-height: 36px;
+      border-radius: var(--radius);
+      font-weight: 700;
+      box-shadow: none;
       transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,
         transform 0.16s ease, box-shadow 0.16s ease;
     }
 
-    .btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+    .btn-sm {
+      min-height: 32px;
     }
 
-    .btn:focus-visible {
-      box-shadow: 0 0 0 0.24rem rgba(15, 118, 110, 0.16);
+    .btn svg,
+    .status-pill svg {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 7px 18px rgba(0, 0, 0, 0.08);
+    }
+
+    .btn:focus-visible,
+    .form-control:focus,
+    .form-select:focus {
+      border-color: rgba(0, 113, 227, 0.48);
+      box-shadow: 0 0 0 0.22rem rgba(0, 113, 227, 0.14);
     }
 
     .btn-primary {
-      background: var(--btn-primary-bg);
-      border-color: var(--btn-primary-border);
+      background: var(--blue);
+      border-color: var(--blue);
     }
 
     .btn-primary:hover:not(:disabled),
     .btn-primary:active,
     .btn-primary:focus-visible {
-      background: var(--btn-primary-hover);
-      border-color: var(--btn-primary-hover);
+      background: var(--blue-hover);
+      border-color: var(--blue-hover);
     }
 
     .btn-outline-primary {
-      color: var(--btn-outline-text);
-      border-color: rgba(15, 76, 129, 0.24);
-      background: var(--btn-outline-bg);
+      color: var(--blue);
+      border-color: rgba(0, 113, 227, 0.28);
+      background: #fff;
     }
 
     .btn-outline-primary:hover:not(:disabled),
     .btn-outline-primary:active,
     .btn-outline-primary:focus-visible {
-      color: #0f4c81;
-      border-color: rgba(15, 76, 129, 0.32);
-      background: rgba(15, 76, 129, 0.08);
+      color: #0058b0;
+      border-color: rgba(0, 113, 227, 0.42);
+      background: rgba(0, 113, 227, 0.08);
     }
 
-    .btn-secondary {
-      color: var(--btn-secondary-text);
-      background: var(--btn-secondary-bg);
-      border-color: var(--btn-secondary-border);
+    .btn-secondary,
+    .btn-outline-secondary {
+      color: var(--muted-strong);
+      background: #f1f1f4;
+      border-color: rgba(29, 29, 31, 0.12);
     }
 
     .btn-secondary:hover:not(:disabled),
-    .btn-secondary:active,
-    .btn-secondary:focus-visible {
-      color: #1e293b;
-      background: #d8e0eb;
-      border-color: #bac7d6;
-    }
-
-    .btn-outline-secondary {
-      color: #475569;
-      background: #fff;
-      border-color: rgba(100, 116, 139, 0.24);
-    }
-
     .btn-outline-secondary:hover:not(:disabled),
+    .btn-secondary:active,
     .btn-outline-secondary:active,
+    .btn-secondary:focus-visible,
     .btn-outline-secondary:focus-visible {
-      color: #334155;
-      background: #f8fafc;
-      border-color: rgba(100, 116, 139, 0.32);
+      color: var(--ink);
+      background: #e8e8ed;
+      border-color: rgba(29, 29, 31, 0.18);
     }
 
     .btn-success {
-      color: var(--btn-success-text);
-      background: var(--btn-success-bg);
-      border-color: var(--btn-success-border);
-    }
-
-    .btn-success:hover:not(:disabled),
-    .btn-success:active,
-    .btn-success:focus-visible {
-      color: #14532d;
-      background: #ccf4d9;
-      border-color: #9fe5ba;
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
     }
 
     .btn-warning {
-      color: var(--btn-warning-text);
-      background: var(--btn-warning-bg);
-      border-color: var(--btn-warning-border);
-    }
-
-    .btn-warning:hover:not(:disabled),
-    .btn-warning:active,
-    .btn-warning:focus-visible {
-      color: #78350f;
-      background: #fde9a4;
-      border-color: #fcd34d;
+      color: #fff;
+      background: var(--amber);
+      border-color: var(--amber);
     }
 
     .btn-info {
-      color: var(--btn-info-text);
-      background: var(--btn-info-bg);
-      border-color: var(--btn-info-border);
+      color: #fff;
+      background: #2364aa;
+      border-color: #2364aa;
     }
 
-    .btn-info:hover:not(:disabled),
-    .btn-info:active,
-    .btn-info:focus-visible {
-      color: #1e40af;
-      background: #cde2fe;
-      border-color: #93c5fd;
-    }
-
-    .btn-danger {
-      color: var(--btn-danger-text);
-      background: var(--btn-danger-bg);
-      border-color: var(--btn-danger-border);
-    }
-
-    .btn-danger:hover:not(:disabled),
-    .btn-danger:active,
-    .btn-danger:focus-visible {
-      color: #991b1b;
-      background: #fecaca;
-      border-color: #fca5a5;
-    }
-
-    .btn-outline-danger {
-      color: #b91c1c;
-      background: #fff;
-      border-color: rgba(220, 38, 38, 0.22);
-    }
-
+    .btn-danger,
     .btn-outline-danger:hover:not(:disabled),
     .btn-outline-danger:active,
     .btn-outline-danger:focus-visible {
-      color: #991b1b;
-      background: #fef2f2;
-      border-color: rgba(220, 38, 38, 0.32);
+      color: #fff;
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .btn-outline-danger {
+      color: var(--red);
+      background: #fff;
+      border-color: rgba(217, 45, 32, 0.25);
     }
 
     .btn:disabled {
-      color: #94a3b8;
-      background: #e5e7eb;
-      border-color: #d1d5db;
+      color: #a1a1a6;
+      background: #ececf0;
+      border-color: #e1e1e6;
       box-shadow: none;
       transform: none;
       opacity: 1;
     }
 
-    .table-hover tbody tr.table-active td {
-      background-color: rgba(15, 118, 110, 0.12) !important;
+    .form-control,
+    .form-select,
+    .modal-content {
+      border-radius: var(--radius);
     }
 
-    .table-hover tbody tr.table-active td:first-child {
-      box-shadow: inset 4px 0 0 #0f766e;
+    .form-control,
+    .form-select {
+      border-color: rgba(29, 29, 31, 0.14);
+      background-color: #fbfbfd;
+    }
+
+    .table {
+      margin-bottom: 0;
+      color: var(--ink);
+    }
+
+    .table thead th {
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 760;
+      text-transform: uppercase;
+    }
+
+    .table tbody td {
+      border-color: rgba(29, 29, 31, 0.07);
+      padding-top: 0.9rem;
+      padding-bottom: 0.9rem;
+      vertical-align: middle;
+    }
+
+    .table-striped > tbody > tr:nth-of-type(odd) > * {
+      --bs-table-bg-type: rgba(248, 248, 251, 0.58);
     }
 
     .table-hover tbody tr {
       cursor: pointer;
     }
 
-    .log-surface {
-      height: 240px;
-      background: #0f172a;
-      color: #dbeafe;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 0.9rem;
+    .table-hover tbody tr:hover td {
+      background-color: rgba(0, 113, 227, 0.045);
     }
 
-    .section-title {
-      font-size: 0.82rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.75rem;
+    .table-hover tbody tr.table-active td {
+      background-color: rgba(0, 113, 227, 0.09) !important;
+    }
+
+    .table-hover tbody tr.table-active td:first-child {
+      box-shadow: inset 3px 0 0 var(--blue);
+    }
+
+    .badge {
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    .log-surface,
+    .guide-surface {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius);
+      background: #111113;
+      color: #e5e5ea;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .log-surface {
+      height: 240px;
+      font-size: 0.88rem;
     }
 
     .guide-surface {
-      background: #0f172a;
-      color: #dbeafe;
-      border-radius: 1rem;
       padding: 0.875rem 1rem;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 0.84rem;
       white-space: pre-wrap;
       word-break: break-word;
@@ -283,9 +523,9 @@
     }
 
     .account-expiration-cell {
-      white-space: nowrap;
       color: var(--muted);
       font-size: 0.88rem;
+      white-space: nowrap;
     }
 
     .account-summary-line {
@@ -293,9 +533,9 @@
       align-items: center;
       gap: 0.5rem;
       width: 100%;
-      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .account-summary-text {
@@ -308,37 +548,6 @@
       white-space: nowrap;
     }
 
-    .account-inline-hint {
-      display: inline-flex;
-      align-items: center;
-      min-height: 1.75rem;
-      padding: 0.2rem 0.6rem;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      color: #64748b;
-      background: #eef2f7;
-      white-space: nowrap;
-    }
-
-    .context-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 1.9rem;
-      padding: 0.25rem 0.75rem;
-      border: 1px solid rgba(15, 118, 110, 0.18);
-      border-radius: 999px;
-      background: rgba(15, 118, 110, 0.08);
-      color: #115e59;
-      font-size: 0.82rem;
-      white-space: nowrap;
-    }
-
-    .context-chip[data-empty="true"] {
-      border-color: rgba(148, 163, 184, 0.2);
-      background: #f8fafc;
-      color: #64748b;
-    }
-
     .desktop-table {
       display: block;
     }
@@ -348,17 +557,17 @@
     }
 
     .mobile-card {
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.05);
       padding: 1rem;
     }
 
     .mobile-card.active {
-      border-color: rgba(15, 118, 110, 0.35);
-      box-shadow: 0 14px 36px rgba(15, 118, 110, 0.12);
-      background: rgba(240, 253, 250, 0.95);
+      border-color: rgba(0, 113, 227, 0.36);
+      box-shadow: 0 12px 28px rgba(0, 113, 227, 0.12);
+      background: rgba(0, 113, 227, 0.045);
     }
 
     .mobile-card-meta {
@@ -402,42 +611,96 @@
     }
 
     .startup-script-status {
-      font-size: 0.84rem;
       color: var(--muted);
+      font-size: 0.84rem;
     }
 
     .startup-script-status[data-state="dirty"] {
-      color: #9a6700;
+      color: var(--amber);
     }
 
     .startup-script-status[data-state="saving"] {
-      color: #0f4c81;
+      color: var(--blue);
     }
 
     .startup-script-status[data-state="error"] {
-      color: #b91c1c;
+      color: var(--red);
     }
 
-    body.authenticated .hero-strip {
-      padding: 0.85rem 1.1rem;
+    .modal-content {
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-soft);
     }
 
-    body.authenticated .hero-strip .small {
-      display: none;
+    .modal-header,
+    .modal-footer {
+      border-color: var(--line);
     }
 
-    body.authenticated .hero-strip h1 {
-      margin-bottom: 0.15rem !important;
-      font-size: 1.45rem;
+    @media (max-width: 1100px) {
+      .overview {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 767.98px) {
       .shell {
-        padding: 1rem 0.75rem 2rem;
+        width: min(100% - 20px, 1440px);
+        padding-top: 10px;
       }
 
-      .hero-strip {
-        padding: 1rem;
+      .topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .topbar-actions,
+      .panel-header,
+      .panel-actions {
+        width: 100%;
+        align-items: stretch;
+      }
+
+      .panel-header {
+        flex-direction: column;
+      }
+
+      .topbar-actions .btn,
+      .panel-actions .btn,
+      .context-chip,
+      .account-inline-hint {
+        width: 100%;
+      }
+
+      .overview-copy {
+        min-height: 0;
+      }
+
+      .page-title {
+        font-size: 1.65rem;
+      }
+
+      .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric-tile {
+        min-height: 132px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric-tile:nth-child(odd) {
+        border-right: 1px solid var(--line);
+      }
+
+      .metric-tile:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+
+      .metric-value {
+        font-size: 2rem;
       }
 
       .desktop-table {
@@ -448,12 +711,6 @@
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
-      }
-
-      .account-inline-hint,
-      .context-chip {
-        width: 100%;
-        justify-content: center;
       }
 
       .create-vm-action-row {
@@ -472,48 +729,93 @@
 </head>
 <body>
   <div class="shell">
-    <div class="hero-card mb-4">
-      <div class="hero-strip">
-        <div class="d-flex align-items-center gap-3">
-          <div>
-            <h1 class="h2 mb-1">Azure VM Management Panel</h1>
-          </div>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark">A</div>
+        <div class="min-w-0">
+          <h1 class="brand-title">Azure Manager</h1>
+          <p class="brand-subtitle">Cloudflare Worker control panel</p>
         </div>
       </div>
-      <div id="loginShell" class="p-4">
-        <div class="row justify-content-center">
-          <div class="col-lg-5" id="loginPanel">
-            <div class="glass-card h-100">
-              <div class="card-body p-4">
-                <div class="section-title">登录</div>
-                <h2 class="h4 mb-3">管理员登录</h2>
-                <form id="loginForm">
-                  <div class="mb-3">
-                    <label for="password" class="form-label">密码</label>
-                    <input id="password" type="password" class="form-control" autocomplete="current-password" required>
-                  </div>
-                  <button class="btn btn-primary w-100" type="submit">登录</button>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="topbar-actions">
+        <div class="status-pill"><span class="status-dot"></span>Worker online</div>
+        <button id="logoutBtn" class="btn btn-outline-danger" type="button">
+          <i data-lucide="log-out"></i>
+          登出
+        </button>
       </div>
-    </div>
+    </header>
 
-    <div id="appShell" class="app-hidden">
-      <div class="glass-card mb-4">
-        <div class="card-body p-0">
-          <div class="d-flex justify-content-between align-items-center px-4 pt-4 pb-3 flex-wrap gap-2">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <div class="section-title mb-0">账户列表</div>
-              <div class="account-inline-hint">选择后即可读取区域与虚拟机列表</div>
-              <div id="accountSelectionContext" class="context-chip" data-empty="true">当前账户：未选择</div>
+    <main id="loginShell" class="login-shell">
+      <div class="login-panel" id="loginPanel">
+        <div class="card-body">
+          <div class="section-title">登录</div>
+          <h2 class="h4 mb-3">管理员登录</h2>
+          <form id="loginForm">
+            <div class="mb-3">
+              <label for="password" class="form-label">密码</label>
+              <input id="password" type="password" class="form-control" autocomplete="current-password" required>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
-              <button id="addAccountBtn" class="btn btn-primary" type="button">添加 Azure 账户</button>
-              <button id="queryAllStatusBtn" class="btn btn-outline-primary" type="button">一键检查全部账户</button>
-              <button id="logoutBtn" class="btn btn-outline-danger" type="button">登出</button>
+            <button class="btn btn-primary w-100" type="submit">
+              <i data-lucide="arrow-right"></i>
+              登录
+            </button>
+          </form>
+        </div>
+      </div>
+    </main>
+
+    <main id="appShell" class="app-hidden">
+      <section class="overview">
+        <div class="overview-copy">
+          <div>
+            <div class="eyebrow">控制台</div>
+            <h2 class="page-title">管理 Azure 测试实例。</h2>
+            <p class="page-copy">账户、区域、虚拟机和任务日志集中在一个页面里；先选择账户，再执行创建或生命周期操作。</p>
+          </div>
+          <div id="accountSelectionContext" class="context-chip mt-3" data-empty="true">当前账户：未选择</div>
+        </div>
+        <div class="metric-grid" aria-label="资源概览">
+          <div class="metric-tile">
+            <div class="metric-label">账户</div>
+            <div id="accountCountStat" class="metric-value">0</div>
+            <div class="metric-note">已保存凭据</div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">虚拟机</div>
+            <div id="vmCountStat" class="metric-value">--</div>
+            <div class="metric-note">当前账户资源</div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">运行中</div>
+            <div id="runningVmCountStat" class="metric-value">--</div>
+            <div class="metric-note">可执行停止/重启</div>
+          </div>
+          <div class="metric-tile">
+            <div class="metric-label">区域</div>
+            <div id="regionCountStat" class="metric-value">--</div>
+            <div class="metric-note">可创建位置</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel mb-4">
+        <div class="card-body p-0">
+          <div class="panel-header">
+            <div>
+              <div class="section-title mb-1">账户</div>
+              <h3 class="panel-title">Azure 账户</h3>
+              <p class="panel-subtitle">选择一个账户后读取区域和虚拟机列表。</p>
+            </div>
+            <div class="panel-actions">
+              <button id="addAccountBtn" class="btn btn-primary" type="button">
+                <i data-lucide="plus"></i>
+                添加账户
+              </button>
+              <button id="queryAllStatusBtn" class="btn btn-outline-primary" type="button">
+                <i data-lucide="activity"></i>
+                检查全部
+              </button>
             </div>
           </div>
           <div class="table-responsive desktop-table">
@@ -537,15 +839,22 @@
           </div>
           <div id="accountMobileList" class="mobile-card-list p-3"></div>
         </div>
-      </div>
+      </section>
 
-      <div class="glass-card mb-4">
+      <section class="panel mb-4">
         <div class="card-body p-0">
-          <div class="d-flex justify-content-between align-items-center px-4 pt-4 pb-3 flex-wrap gap-2">
+          <div class="panel-header">
             <div>
               <div class="section-title mb-1">虚拟机列表</div>
+              <h3 class="panel-title">实例</h3>
+              <p class="panel-subtitle">选择一台实例后执行启动、停止、更换 IP 或删除资源组。</p>
             </div>
-            <button id="refreshVms" class="btn btn-sm btn-outline-primary" type="button" disabled>刷新列表</button>
+            <div class="panel-actions">
+              <button id="refreshVms" class="btn btn-sm btn-outline-primary" type="button" disabled>
+                <i data-lucide="refresh-cw"></i>
+                刷新
+              </button>
+            </div>
           </div>
           <div class="table-responsive desktop-table">
             <table class="table table-hover mb-0">
@@ -564,19 +873,35 @@
             </table>
           </div>
           <div id="vmMobileList" class="mobile-card-list p-3 pt-0"></div>
-          <div class="px-4 py-3 border-top d-flex flex-wrap gap-2 justify-content-center">
-            <button type="button" id="startBtn" class="btn btn-secondary" disabled>启动</button>
-            <button type="button" id="stopBtn" class="btn btn-secondary" disabled>停止</button>
-            <button type="button" id="restartBtn" class="btn btn-secondary" disabled>重启</button>
-            <button type="button" id="changeIpBtn" class="btn btn-secondary" disabled>更换 IP</button>
-            <button type="button" id="deleteBtn" class="btn btn-secondary" disabled>删除资源组</button>
+          <div class="px-4 py-3 border-top action-bar justify-content-center">
+            <button type="button" id="startBtn" class="btn btn-secondary" disabled>
+              <i data-lucide="play"></i>
+              启动
+            </button>
+            <button type="button" id="stopBtn" class="btn btn-secondary" disabled>
+              <i data-lucide="square"></i>
+              停止
+            </button>
+            <button type="button" id="restartBtn" class="btn btn-secondary" disabled>
+              <i data-lucide="rotate-cw"></i>
+              重启
+            </button>
+            <button type="button" id="changeIpBtn" class="btn btn-secondary" disabled>
+              <i data-lucide="shuffle"></i>
+              更换 IP
+            </button>
+            <button type="button" id="deleteBtn" class="btn btn-secondary" disabled>
+              <i data-lucide="trash-2"></i>
+              删除资源组
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="glass-card mb-4">
-        <div class="card-body p-4">
-          <div class="section-title mb-3">创建实例</div>
+      <section class="panel mb-4">
+        <div class="panel-body">
+          <div class="section-title mb-1">创建实例</div>
+          <h3 class="panel-title mb-3">新建虚拟机</h3>
           <div class="row g-3 align-items-center mb-3">
             <div class="col-lg-2">
               <label class="form-label mb-lg-0">选择区域</label>
@@ -599,20 +924,30 @@
             </div>
           </details>
           <div class="mt-3 create-vm-action-row">
-            <button id="createVmBtn" class="btn btn-primary create-vm-btn" type="button" disabled>创建实例</button>
+            <button id="createVmBtn" class="btn btn-primary create-vm-btn" type="button" disabled>
+              <i data-lucide="server"></i>
+              创建实例
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="glass-card">
-        <div class="card-body p-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
+      <section class="panel">
+        <div class="panel-body">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
               <div class="section-title mb-1">任务日志</div>
+              <h3 class="panel-title">操作记录</h3>
             </div>
-            <div class="d-flex gap-2">
-              <button id="toggleLogBtn" class="btn btn-sm btn-outline-secondary" type="button">展开</button>
-              <button id="clearLogBtn" class="btn btn-sm btn-outline-danger" type="button">清除</button>
+            <div class="button-row">
+              <button id="toggleLogBtn" class="btn btn-sm btn-outline-secondary" type="button">
+                <i data-lucide="panel-bottom-open"></i>
+                展开
+              </button>
+              <button id="clearLogBtn" class="btn btn-sm btn-outline-danger" type="button">
+                <i data-lucide="eraser"></i>
+                清除
+              </button>
             </div>
           </div>
           <div id="logCollapsedHint" class="log-collapsed-hint app-hidden">暂无任务日志，执行写操作或发生错误时会自动展开。</div>
@@ -620,8 +955,8 @@
             <pre id="logOutput" class="log-surface form-control mb-0"></pre>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
 
   <div class="modal fade" id="createVmModal" tabindex="-1">
@@ -798,6 +1133,7 @@ az ad sp create-for-rbac \
     </div>
   </div>
 
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="./app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
