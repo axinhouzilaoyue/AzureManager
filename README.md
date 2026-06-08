@@ -60,13 +60,7 @@ Azure 账户需要准备以下字段：
 azure-manager-db
 ```
 
-创建完成后，打开该 D1 数据库的 SQL 控制台，执行：
-
-```text
-database/init.sql
-```
-
-该 SQL 文件会创建账户、任务、任务日志、审计事件和应用设置相关表。
+数据库表结构会在首次请求时由 Worker 自动初始化，无需手动执行 SQL。
 
 ### 2. 导入仓库部署 Worker
 
@@ -170,31 +164,19 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 ## 重新部署
 
-如需更新代码，有两种方式：
+推送代码到 GitHub 后，Cloudflare Builds 会自动构建并部署。
 
-| 方式 | 说明 |
-| --- | --- |
-| Dashboard Git 部署 | 在 Cloudflare Dashboard 中保持仓库连接，推送代码后由 Cloudflare 构建部署 |
-| 手动重新导入 | 在新 Cloudflare 账号中重新按部署步骤导入仓库 |
-
-本项目已在 `wrangler.jsonc` 中启用：
-
-```jsonc
-"keep_vars": true
-```
-
-因此，后续通过 `wrangler deploy` 或 Cloudflare Builds 部署时，会尽量保留 Dashboard 中已配置的运行时变量和机密。
+`wrangler.jsonc` 中已启用 `keep_vars: true`，部署时会保留 Dashboard 中已配置的运行时变量和机密，无需重新配置。
 
 ## 更换 Cloudflare 账号
 
 更换 Cloudflare 账号时，建议按全新环境处理：
 
 1. 在新账号中创建新的 D1 数据库。
-2. 执行 `database/init.sql` 初始化表结构。
-3. 导入仓库部署 Worker。
-4. 重新绑定 D1。
-5. 重新配置 `SESSION_SECRET`、`ACCOUNT_ENCRYPTION_KEY`、`APP_PASSWORD`。
-6. 登录后重新添加 Azure 账户。
+2. 导入仓库部署 Worker。
+3. 重新绑定 D1。
+4. 重新配置 `SESSION_SECRET`、`ACCOUNT_ENCRYPTION_KEY`、`APP_PASSWORD`。
+5. 登录后重新添加 Azure 账户。
 
 如果需要迁移旧 D1 数据，必须同时迁移旧的 `ACCOUNT_ENCRYPTION_KEY`。否则旧数据中的 Azure `client_secret` 无法解密。
 

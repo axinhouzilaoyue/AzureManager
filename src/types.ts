@@ -51,6 +51,7 @@ export interface SqlStatement {
 
 export interface SqlDatabase {
   prepare(query: string): SqlStatement;
+  batch(statements: SqlStatement[]): Promise<unknown[]>;
 }
 
 export interface AssetBinding {

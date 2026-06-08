@@ -18,6 +18,7 @@ import {
   deleteAccount,
   getAccountById,
   getGlobalStartupScript,
+  initializeDatabase,
   listAccounts,
   setGlobalStartupScript,
   updateAccountMetadata,
@@ -36,11 +37,23 @@ import type { ZodType } from "zod";
 
 export { SubscriptionLock, CreateVmWorkflow, VmLifecycleWorkflow, ChangeIpWorkflow };
 
+let dbInitPromise: Promise<void> | null = null;
+
 export default {
   async fetch(request: Request, env: AppEnv): Promise<Response> {
     const url = new URL(request.url);
 
     try {
+      if (env.DB) {
+        if (!dbInitPromise) {
+          dbInitPromise = initializeDatabase(env.DB).catch((err) => {
+            dbInitPromise = null;
+            throw err;
+          });
+        }
+        await dbInitPromise;
+      }
+
       if (url.pathname === "/health") {
         return jsonResponse({
           ok: true,
