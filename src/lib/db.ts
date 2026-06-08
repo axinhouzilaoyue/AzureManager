@@ -358,7 +358,6 @@ export async function createTask(
     type: string;
     workflowName: WorkflowName;
     lockKey: string;
-    idempotencyKey: string;
     createdBy: string;
     message: string;
   },
@@ -377,7 +376,7 @@ export async function createTask(
       input.workflowName,
       input.lockKey,
       input.message,
-      input.idempotencyKey,
+      crypto.randomUUID(),
       input.createdBy,
       timestamp,
     )
@@ -473,8 +472,8 @@ export async function appendTaskLog(
   taskId: string,
   input: {
     step: string;
-    level: string;
     message: string;
+    level?: string;
     detail?: JsonRecord | string | null;
   },
 ): Promise<void> {
@@ -485,7 +484,7 @@ export async function appendTaskLog(
     .bind(
       taskId,
       input.step,
-      input.level,
+      input.level ?? "info",
       input.message,
       input.detail === undefined || input.detail === null ? null : JSON.stringify(input.detail),
       nowIso(),

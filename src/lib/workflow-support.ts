@@ -1,6 +1,5 @@
 import type { AppEnv, DecryptedAccountRecord } from "../types";
 import { getDecryptedAccountById } from "./db";
-import { acquireSubscriptionLock, releaseSubscriptionLock } from "./locks";
 
 export async function getDecryptedAccountOrThrow(
   env: AppEnv,
@@ -11,24 +10,6 @@ export async function getDecryptedAccountOrThrow(
     throw new Error("account_not_found");
   }
   return account;
-}
-
-export async function withSubscriptionLock<T>(
-  env: AppEnv,
-  input: {
-    lockKey: string;
-    owner: string;
-    timeoutSeconds: number;
-    ttlSeconds: number;
-  },
-  handler: () => Promise<T>,
-): Promise<T> {
-  await acquireSubscriptionLock(env, input);
-  try {
-    return await handler();
-  } finally {
-    await releaseSubscriptionLock(env, input);
-  }
 }
 
 export function getLockTimeoutSeconds(env: AppEnv): number {

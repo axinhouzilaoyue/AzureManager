@@ -11,7 +11,7 @@ import {
   getNetworkInterface,
 } from "../lib/azure/network";
 import { getDecryptedAccountOrThrow, getLockTimeoutSeconds } from "../lib/workflow-support";
-import { taskFailed, taskLog, taskRunning, taskSucceeded } from "../lib/tasks";
+import { appendTaskLog, markTaskFailure, markTaskRunning, markTaskSuccess } from "../lib/db";
 
 function extractResourceName(resourceId: string): string {
   const parts = resourceId.split("/");
@@ -41,8 +41,8 @@ export class ChangeIpWorkflow extends WorkflowEntrypoint {
       });
 
       await step.do("mark task running", async () => {
-        await taskRunning(env, payload.taskId, `正在为 ${payload.vmName} 更换公网 IP...`);
-        await taskLog(env, payload.taskId, "lock", `已获取订阅锁 ${lockKey}`);
+        await markTaskRunning(env, payload.taskId, `正在为 ${payload.vmName} 更换公网 IP...`);
+        await appendTaskLog(env, payload.taskId, {step: "lock", message: `已获取订阅锁 ${lockKey}`});
       });
 
       const vmContext = await step.do("load vm network context", async () => {
@@ -76,13 +76,13 @@ export class ChangeIpWorkflow extends WorkflowEntrypoint {
             vmContext.nicName,
             buildNetworkInterfacePayload(initialNic, null),
           );
-          await taskLog(env, payload.taskId, "network", `已从网卡 ${vmContext.nicName} 卸载旧公网 IP`);
+          await appendTaskLog(env, payload.taskId, {step: "network", message: `已从网卡 ${vmContext.nicName} 卸载旧公网 IP`});
         });
 
         await step.do("delete old public ip", async () => {
           const oldPublicIpName = extractResourceName(oldPublicIpId);
           await deletePublicIpAddress(client, account.subscriptionId, payload.resourceGroup, oldPublicIpName);
-          await taskLog(env, payload.taskId, "public-ip", `旧公网 IP ${oldPublicIpName} 已删除`);
+          await appendTaskLog(env, payload.taskId, {step: "public-ip", message: `旧公网 IP ${oldPublicIpName} 已删除`});
         });
       }
 
@@ -96,7 +96,7 @@ export class ChangeIpWorkflow extends WorkflowEntrypoint {
           vmContext.vmLocation,
           "Static",
         );
-        await taskLog(env, payload.taskId, "public-ip", `新公网 IP 资源 ${newPublicIpName} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "public-ip", message: `新公网 IP 资源 ${newPublicIpName} 已创建`});
         return created;
       });
 
@@ -114,11 +114,11 @@ export class ChangeIpWorkflow extends WorkflowEntrypoint {
           vmContext.nicName,
           buildNetworkInterfacePayload(refreshedNic, newPublicIp.id),
         );
-        await taskLog(env, payload.taskId, "network", `已为 ${payload.vmName} 绑定新的公网 IP`);
+        await appendTaskLog(env, payload.taskId, {step: "network", message: `已为 ${payload.vmName} 绑定新的公网 IP`});
       });
 
       await step.do("mark task success", async () => {
-        await taskSucceeded(env, payload.taskId, `${payload.vmName} 更换公网 IP 成功`, {
+        await markTaskSuccess(env, payload.taskId, `${payload.vmName} 更换公网 IP 成功`, {
           vmName: payload.vmName,
           resourceGroup: payload.resourceGroup,
           publicIp: newPublicIp.properties?.ipAddress ?? "N/A",
@@ -126,8 +126,8 @@ export class ChangeIpWorkflow extends WorkflowEntrypoint {
       });
     } catch (error) {
       await step.do("record failure", async () => {
-        await taskLog(env, payload.taskId, "error", error instanceof Error ? error.message : String(error), null, "error");
-        await taskFailed(env, payload.taskId, {
+        await appendTaskLog(env, payload.taskId, {step: "error", message: error instanceof Error ? error.message : String(error), level: "error"});
+        await markTaskFailure(env, payload.taskId, {
           message: `更换公网 IP 失败: ${error instanceof Error ? error.message : String(error)}`,
           errorMessage: error instanceof Error ? error.message : String(error),
         });

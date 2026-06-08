@@ -14,19 +14,24 @@ import { SubscriptionLock } from "./durable/subscriptionLock";
 import { createLogoutCookie, createLoginCookie, createSelectionCookie, getAuthContext, requireAuth } from "./lib/auth";
 import {
   accountNameExists,
+  appendTaskLog,
   createAccount,
+  createTask,
   deleteAccount,
   getAccountById,
   getGlobalStartupScript,
+  getTaskResponse,
   initializeDatabase,
   listAccounts,
+  markTaskFailure,
   setGlobalStartupScript,
+  setTaskWorkflowInstance,
   updateAccountMetadata,
+  writeAuditEvent,
 } from "./lib/db";
 import { listVirtualMachines } from "./lib/azure/compute";
 import { AzureArmClient } from "./lib/azure/client";
 import { getSubscriptionDetails, listSubscriptionLocations } from "./lib/azure/subscription";
-import { enqueueTask, getTaskResponse, registerWorkflowInstance, taskFailed, taskLog, audit } from "./lib/tasks";
 import { accountCheckSchema, createAccountSchema, createVmSchema, changeIpSchema, editAccountSchema, loginSchema, selectAccountSchema, updateStartupScriptSchema, vmActionSchema } from "./lib/validation";
 import { getDecryptedAccountOrThrow } from "./lib/workflow-support";
 import { errorResponse, jsonResponse, readJson } from "./lib/utils";
@@ -305,7 +310,7 @@ async function handleApiRoutes(request: Request, env: AppEnv, url: URL): Promise
       userData: body.userData,
       updatedBy: auth.actor,
     });
-    await audit(env, {
+    await writeAuditEvent(env, {
       actor: auth.actor,
       action: "setting.updated",
       targetType: "app_setting",
@@ -354,7 +359,7 @@ async function handleApiRoutes(request: Request, env: AppEnv, url: URL): Promise
       expirationDate: body.expirationDate,
     });
 
-    await audit(env, {
+    await writeAuditEvent(env, {
       actor: auth.actor,
       action: "account.created",
       targetType: "account",
@@ -388,7 +393,7 @@ async function handleApiRoutes(request: Request, env: AppEnv, url: URL): Promise
       expirationDate: body.expirationDate,
     });
 
-    await audit(env, {
+    await writeAuditEvent(env, {
       actor: auth.actor,
       action: "account.updated",
       targetType: "account",
@@ -439,7 +444,7 @@ async function handleApiRoutes(request: Request, env: AppEnv, url: URL): Promise
     }
 
     await deleteAccount(env, accountId);
-    await audit(env, {
+    await writeAuditEvent(env, {
       actor: auth.actor,
       action: "account.deleted",
       targetType: "account",
@@ -594,7 +599,7 @@ async function enqueueAndStartTask<TParams extends { taskId: string }>(
     queuedMessage: string;
   },
 ): Promise<Response> {
-  await enqueueTask(env, {
+  await createTask(env, {
     id: input.params.taskId,
     accountId: input.accountId,
     type: input.taskType,
@@ -610,8 +615,8 @@ async function enqueueAndStartTask<TParams extends { taskId: string }>(
       params: input.params,
     });
 
-    await registerWorkflowInstance(env, input.params.taskId, instance.id);
-    await audit(env, {
+    await setTaskWorkflowInstance(env, input.params.taskId, instance.id);
+    await writeAuditEvent(env, {
       actor: input.actor,
       action: "task.enqueued",
       targetType: "task",
@@ -629,15 +634,12 @@ async function enqueueAndStartTask<TParams extends { taskId: string }>(
       workflowInstanceId: instance.id,
     });
   } catch (error) {
-    await taskLog(
-      env,
-      input.params.taskId,
-      "workflow",
-      error instanceof Error ? error.message : String(error),
-      null,
-      "error",
-    );
-    await taskFailed(env, input.params.taskId, {
+    await appendTaskLog(env, input.params.taskId, {
+      step: "workflow",
+      message: error instanceof Error ? error.message : String(error),
+      level: "error",
+    });
+    await markTaskFailure(env, input.params.taskId, {
       message: "任务提交到 Workflow 失败",
       errorMessage: error instanceof Error ? error.message : String(error),
     });

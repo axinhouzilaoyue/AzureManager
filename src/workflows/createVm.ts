@@ -12,7 +12,7 @@ import {
 import { createOrUpdateResourceGroup, deleteResourceGroup } from "../lib/azure/resource";
 import { getDecryptedAccountOrThrow, generateAdminPassword, getLockTimeoutSeconds } from "../lib/workflow-support";
 import { acquireSubscriptionLock, releaseSubscriptionLock } from "../lib/locks";
-import { taskFailed, taskLog, taskRunning, taskSucceeded } from "../lib/tasks";
+import { appendTaskLog, markTaskFailure, markTaskRunning, markTaskSuccess } from "../lib/db";
 
 export class CreateVmWorkflow extends WorkflowEntrypoint {
   override async run(event: Readonly<WorkflowEvent<CreateVmParams>>, step: WorkflowStep): Promise<void> {
@@ -38,13 +38,13 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
       });
 
       await step.do("mark task running", async () => {
-        await taskRunning(env, payload.taskId, `正在为账户 ${account.name} 创建虚拟机...`);
-        await taskLog(env, payload.taskId, "lock", `已获取订阅锁 ${lockKey}`);
+        await markTaskRunning(env, payload.taskId, `正在为账户 ${account.name} 创建虚拟机...`);
+        await appendTaskLog(env, payload.taskId, {step: "lock", message: `已获取订阅锁 ${lockKey}`});
       });
 
       await step.do("create resource group", async () => {
         await createOrUpdateResourceGroup(client, account.subscriptionId, resourceGroup, payload.region);
-        await taskLog(env, payload.taskId, "resource-group", `资源组 ${resourceGroup} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "resource-group", message: `资源组 ${resourceGroup} 已创建`});
       });
 
       const virtualNetwork = await step.do("create virtual network", async () => {
@@ -55,7 +55,7 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
           `vnet-${vmName}`,
           payload.region,
         );
-        await taskLog(env, payload.taskId, "network", `虚拟网络 ${created.name} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "network", message: `虚拟网络 ${created.name} 已创建`});
         return created;
       });
 
@@ -73,7 +73,7 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
           payload.region,
           payload.ipType,
         );
-        await taskLog(env, payload.taskId, "public-ip", `公网 IP 资源 ${created.name} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "public-ip", message: `公网 IP 资源 ${created.name} 已创建`});
         return created;
       });
 
@@ -99,7 +99,7 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
             },
           },
         );
-        await taskLog(env, payload.taskId, "network", `网卡 ${networkInterfaceName} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "network", message: `网卡 ${networkInterfaceName} 已创建`});
       });
 
       await step.do("create virtual machine", async () => {
@@ -113,7 +113,7 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
           adminPassword,
           userData: payload.userData,
         });
-        await taskLog(env, payload.taskId, "vm", `虚拟机 ${vmName} 已创建`);
+        await appendTaskLog(env, payload.taskId, {step: "vm", message: `虚拟机 ${vmName} 已创建`});
       });
 
       const finalPublicIp = await step.do("read final public ip", async () => {
@@ -126,7 +126,7 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
       });
 
       await step.do("mark task success", async () => {
-        await taskSucceeded(
+        await markTaskSuccess(
           env,
           payload.taskId,
           `虚拟机 ${vmName} 创建成功`,
@@ -141,8 +141,8 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
       });
     } catch (error) {
       await step.do("record failure", async () => {
-        await taskLog(env, payload.taskId, "error", error instanceof Error ? error.message : String(error), null, "error");
-        await taskFailed(env, payload.taskId, {
+        await appendTaskLog(env, payload.taskId, {step: "error", message: error instanceof Error ? error.message : String(error), level: "error"});
+        await markTaskFailure(env, payload.taskId, {
           message: `虚拟机创建失败: ${error instanceof Error ? error.message : String(error)}`,
           errorMessage: error instanceof Error ? error.message : String(error),
         });
@@ -151,18 +151,11 @@ export class CreateVmWorkflow extends WorkflowEntrypoint {
       try {
         await step.do("cleanup failed resource group", async () => {
           await deleteResourceGroup(client, account.subscriptionId, resourceGroup);
-          await taskLog(env, payload.taskId, "cleanup", `已回收资源组 ${resourceGroup}`);
+          await appendTaskLog(env, payload.taskId, {step: "cleanup", message: `已回收资源组 ${resourceGroup}`});
         });
       } catch (cleanupError) {
         await step.do("record cleanup failure", async () => {
-          await taskLog(
-            env,
-            payload.taskId,
-            "cleanup",
-            cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-            null,
-            "error",
-          );
+          await appendTaskLog(env, payload.taskId, {step: "cleanup", message: cleanupError instanceof Error ? cleanupError.message : String(cleanupError), level: "error"});
         });
       }
 
