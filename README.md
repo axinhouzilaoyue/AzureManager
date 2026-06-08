@@ -76,7 +76,6 @@ azure-manager-db
 | Root directory | `/` |
 | Build command | `npm ci` |
 | Deploy command | `npx wrangler deploy` |
-| Build watch paths | `*` |
 
 Worker 名称由 `wrangler.jsonc` 中的 `name` 字段控制，当前为：
 
@@ -183,32 +182,5 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ## 安全说明
 
 - 不要将 `SESSION_SECRET`、`ACCOUNT_ENCRYPTION_KEY`、`APP_PASSWORD` 写入 Git 仓库。
-- 不要公开 Cloudflare Deploy Hook URL；URL 本身具有触发部署的权限。
 - Azure Service Principal 建议只授予目标测试订阅所需权限。
 - 删除资源组是高风险操作，请确认当前选择的 Azure 账户和资源组无误后再执行。
-
-## 本地开发
-
-安装依赖：
-
-```bash
-npm ci
-```
-
-类型检查：
-
-```bash
-npm run typecheck
-```
-
-本地开发：
-
-```bash
-npm run dev
-```
-
-部署：
-
-```bash
-npm run deploy
-```
