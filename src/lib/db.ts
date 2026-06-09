@@ -9,7 +9,6 @@ import type {
   TaskRecord,
   TaskResponse,
   TaskStatus,
-  WorkflowName,
 } from "../types";
 import { decryptString, encryptString } from "./crypto";
 import { nowIso, parseJsonOrNull } from "./utils";
@@ -22,7 +21,6 @@ interface AccountRow {
 }
 interface TaskRow {
   id: string; account_id: string; type: string; status: TaskStatus;
-  workflow_name: WorkflowName; workflow_instance_id: string | null;
   lock_key: string | null; message: string | null; result_json: string | null;
   error_code: string | null; error_message: string | null; idempotency_key: string;
   created_by: string; created_at: string; updated_at: string;
@@ -40,17 +38,14 @@ function toSummary(a: AccountRecord): AccountSummary {
   return { id: a.id, name: a.name, clientId: a.clientId, tenantId: a.tenantId, subscriptionId: a.subscriptionId, expirationDate: a.expirationDate, createdAt: a.createdAt, updatedAt: a.updatedAt };
 }
 function mapTaskRow(r: TaskRow): TaskRecord {
-  return { id: r.id, accountId: r.account_id, type: r.type, status: r.status, workflowName: r.workflow_name, workflowInstanceId: r.workflow_instance_id, lockKey: r.lock_key, message: r.message, resultJson: r.result_json, errorCode: r.error_code, errorMessage: r.error_message, idempotencyKey: r.idempotency_key, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, completedAt: r.completed_at };
+  return { id: r.id, accountId: r.account_id, type: r.type, status: r.status, lockKey: r.lock_key, message: r.message, resultJson: r.result_json, errorCode: r.error_code, errorMessage: r.error_message, idempotencyKey: r.idempotency_key, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, completedAt: r.completed_at };
 }
 function mapTaskLogRow(r: TaskLogRow): TaskLogRecord {
   return { id: r.id, taskId: r.task_id, step: r.step, level: r.level, message: r.message, detailJson: r.detail_json, createdAt: r.created_at };
 }
 
 const STARTUP_SCRIPT_SETTING_KEY = "global_startup_script";
-
-export const DEFAULT_STARTUP_SCRIPT = `#!/bin/bash
-set -euxo pipefail
-echo "Provisioned by Azure VM Management Panel" > /etc/motd`;
+const DEFAULT_STARTUP_SCRIPT = `#!/bin/bash\nset -euxo pipefail\necho "Provisioned by Azure VM Management Panel" > /etc/motd`;
 
 export function initializeDatabase(db: Database): void {
   db.exec(`
@@ -63,10 +58,10 @@ export function initializeDatabase(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_accounts_subscription_id ON accounts(subscription_id);
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY, account_id TEXT NOT NULL, type TEXT NOT NULL,
-      status TEXT NOT NULL, workflow_name TEXT NOT NULL, workflow_instance_id TEXT,
-      lock_key TEXT, message TEXT, result_json TEXT, error_code TEXT, error_message TEXT,
-      idempotency_key TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, started_at TEXT, completed_at TEXT,
+      status TEXT NOT NULL, lock_key TEXT, message TEXT, result_json TEXT,
+      error_code TEXT, error_message TEXT, idempotency_key TEXT NOT NULL UNIQUE,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      started_at TEXT, completed_at TEXT,
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_tasks_account_id ON tasks(account_id);
@@ -78,11 +73,6 @@ export function initializeDatabase(db: Database): void {
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id, id);
-    CREATE TABLE IF NOT EXISTS audit_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT NOT NULL,
-      action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT,
-      metadata_json TEXT, created_at TEXT NOT NULL
-    );
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT
     );
@@ -161,20 +151,15 @@ export async function setGlobalStartupScript(env: AppEnv, input: { userData: str
 }
 
 export async function createTask(env: AppEnv, input: {
-  id: string; accountId: string; type: string; workflowName: WorkflowName;
+  id: string; accountId: string; type: string;
   lockKey: string; createdBy: string; message: string;
 }): Promise<void> {
   const timestamp = nowIso();
   env.DB.prepare(
-    `INSERT INTO tasks (id, account_id, type, status, workflow_name, workflow_instance_id, lock_key, message,
+    `INSERT INTO tasks (id, account_id, type, status, lock_key, message,
       result_json, error_code, error_message, idempotency_key, created_by, created_at, updated_at, started_at, completed_at)
-     VALUES (?, ?, ?, 'queued', ?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
-  ).run(input.id, input.accountId, input.type, input.workflowName, input.lockKey, input.message, crypto.randomUUID(), input.createdBy, timestamp, timestamp);
-}
-
-export async function setTaskWorkflowInstance(env: AppEnv, taskId: string, workflowInstanceId: string): Promise<void> {
-  env.DB.prepare(`UPDATE tasks SET workflow_instance_id = ?, updated_at = ? WHERE id = ?`)
-    .run(workflowInstanceId, nowIso(), taskId);
+     VALUES (?, ?, ?, 'queued', ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
+  ).run(input.id, input.accountId, input.type, input.lockKey, input.message, crypto.randomUUID(), input.createdBy, timestamp, timestamp);
 }
 
 export async function markTaskRunning(env: AppEnv, taskId: string, message: string): Promise<void> {
@@ -216,17 +201,9 @@ export async function appendTaskLog(env: AppEnv, taskId: string, input: {
   );
 }
 
-export async function writeAuditEvent(env: AppEnv, input: {
-  actor: string; action: string; targetType: string; targetId?: string | null; metadata?: JsonRecord | null;
-}): Promise<void> {
-  env.DB.prepare(
-    `INSERT INTO audit_events (actor, action, target_type, target_id, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(input.actor, input.action, input.targetType, input.targetId ?? null, input.metadata ? JSON.stringify(input.metadata) : null, nowIso());
-}
-
 export async function getTaskResponse(env: AppEnv, taskId: string): Promise<TaskResponse | null> {
   const taskRow = env.DB.prepare(
-    `SELECT id, account_id, type, status, workflow_name, workflow_instance_id, lock_key, message, result_json,
+    `SELECT id, account_id, type, status, lock_key, message, result_json,
             error_code, error_message, idempotency_key, created_by, created_at, updated_at, started_at, completed_at
      FROM tasks WHERE id = ?`
   ).get(taskId) as TaskRow | null;
@@ -239,10 +216,15 @@ export async function getTaskResponse(env: AppEnv, taskId: string): Promise<Task
     id: task.id, status: task.status, message: task.message,
     result: parseJsonOrNull<JsonRecord | string>(task.resultJson),
     errorCode: task.errorCode, errorMessage: task.errorMessage,
-    workflowName: task.workflowName, workflowInstanceId: task.workflowInstanceId,
     logs: logs.map((r) => {
       const l = mapTaskLogRow(r);
       return { id: l.id, step: l.step, level: l.level, message: l.message, detail: parseJsonOrNull(l.detailJson), createdAt: l.createdAt };
     }),
   };
+}
+
+export async function getDecryptedAccountOrThrow(env: AppEnv, accountId: string): Promise<DecryptedAccountRecord> {
+  const account = await getDecryptedAccountById(env, accountId);
+  if (!account) throw new Error("account_not_found");
+  return account;
 }

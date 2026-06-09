@@ -9,19 +9,18 @@ import {
   createTask,
   deleteAccount,
   getAccountById,
+  getDecryptedAccountOrThrow,
   getGlobalStartupScript,
   getTaskResponse,
   initializeDatabase,
   listAccounts,
   setGlobalStartupScript,
   updateAccountMetadata,
-  writeAuditEvent,
 } from "./lib/db";
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
 import { listVirtualMachines } from "./lib/azure/compute";
 import { getSubscriptionDetails, listSubscriptionLocations } from "./lib/azure/subscription";
-import { getDecryptedAccountOrThrow } from "./lib/workflow-support";
 import {
   accountCheckSchema,
   changeIpSchema,
@@ -216,7 +215,6 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (body instanceof Response) return body;
     if (await accountNameExists(ENV, body.name)) return errorResponse(409, "账户名称已存在");
     const created = await createAccount(ENV, { id: crypto.randomUUID(), ...body });
-    await writeAuditEvent(ENV, { actor: auth.actor, action: "account.created", targetType: "account", targetId: created.id, metadata: { name: created.name } });
     return jsonResponse(created, { status: 201 });
   }
 
@@ -227,7 +225,6 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (!(await getAccountById(ENV, body.accountId))) return errorResponse(404, "账户未找到");
     if (await accountNameExists(ENV, body.newName, body.accountId)) return errorResponse(409, "新的账户名称已存在");
     await updateAccountMetadata(ENV, { accountId: body.accountId, newName: body.newName, expirationDate: body.expirationDate ?? null });
-    await writeAuditEvent(ENV, { actor: auth.actor, action: "account.updated", targetType: "account", targetId: body.accountId });
     let headers: HeadersInit | undefined;
     if (auth.session.selectedAccountId === body.accountId) {
       headers = { "Set-Cookie": await createSelectionCookie(ENV, req, body.accountId) };
@@ -259,7 +256,6 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const account = await getAccountById(ENV, deleteMatch[1]);
     if (!account) return errorResponse(404, "账户未找到");
     await deleteAccount(ENV, deleteMatch[1]);
-    await writeAuditEvent(ENV, { actor: auth.actor, action: "account.deleted", targetType: "account", targetId: deleteMatch[1] });
     const headers: HeadersInit = {};
     if (auth.session.selectedAccountId === deleteMatch[1]) {
       headers["Set-Cookie"] = await createSelectionCookie(ENV, req, null);
@@ -304,7 +300,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const msg = body.action === "delete"
       ? `已提交删除资源组 ${body.resourceGroup} 的任务`
       : `已提交 ${body.vmName} 的 ${body.action} 任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: `vm.${body.action}`, workflowName: "vm-lifecycle-workflow", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
+    await createTask(ENV, { id: taskId, accountId: selectedId, type: `vm.${body.action}`, lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
     startVmLifecycle(ENV, { taskId, accountId: selectedId, actor: auth.actor, action: body.action, resourceGroup: body.resourceGroup, vmName: body.vmName });
     return jsonResponse({ message: msg, taskId });
   }
@@ -314,7 +310,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (body instanceof Response) return body;
     const taskId = crypto.randomUUID();
     const msg = `已提交 ${body.vmName} 的更换公网 IP 任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.change-ip", workflowName: "change-ip-workflow", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
+    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.change-ip", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
     startChangeIp(ENV, { taskId, accountId: selectedId, actor: auth.actor, resourceGroup: body.resourceGroup, vmName: body.vmName });
     return jsonResponse({ message: msg, taskId });
   }
@@ -324,7 +320,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (body instanceof Response) return body;
     const taskId = crypto.randomUUID();
     const msg = `已提交 ${body.region} 区域的创建虚拟机任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.create", workflowName: "create-vm-workflow", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
+    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.create", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
     startCreateVm(ENV, { taskId, accountId: selectedId, actor: auth.actor, region: body.region, vmSize: body.vmSize, osImage: body.osImage, diskSize: body.diskSize, ipType: body.ipType, userData: body.userData ?? null });
     return jsonResponse({ message: msg, taskId });
   }

@@ -6,10 +6,6 @@ export type TaskStatus = "queued" | "running" | "success" | "failure";
 
 export type VmAction = "start" | "stop" | "restart" | "delete";
 
-export type WorkflowName =
-  | "create-vm-workflow"
-  | "vm-lifecycle-workflow"
-  | "change-ip-workflow";
 
 export interface AppEnv {
   APP_NAME: string;
@@ -75,8 +71,6 @@ export interface TaskRecord {
   accountId: string;
   type: string;
   status: TaskStatus;
-  workflowName: WorkflowName;
-  workflowInstanceId: string | null;
   lockKey: string | null;
   message: string | null;
   resultJson: string | null;
@@ -107,8 +101,6 @@ export interface TaskResponse {
   result: JsonRecord | string | null;
   errorCode: string | null;
   errorMessage: string | null;
-  workflowName: WorkflowName;
-  workflowInstanceId: string | null;
   logs: Array<{
     id: number;
     step: string;

@@ -1,7 +1,12 @@
 import type { AppEnv, ChangeIpParams, CreateVmParams, VmLifecycleParams } from "../types";
-import { appendTaskLog, markTaskFailure, markTaskRunning, markTaskSuccess } from "./db";
+import { appendTaskLog, getDecryptedAccountOrThrow, markTaskFailure, markTaskRunning, markTaskSuccess } from "./db";
 import { acquireSubscriptionLock, releaseSubscriptionLock } from "./locks";
-import { generateAdminPassword, getDecryptedAccountOrThrow, getLockTimeoutSeconds } from "./workflow-support";
+
+function generateAdminPassword(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
 import { AzureArmClient } from "./azure/client";
 import { createVirtualMachine, getVirtualMachine, startVmAction } from "./azure/compute";
 import {
@@ -36,7 +41,7 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
   const vmName = `vm-${slugRegion}-${timestamp}`;
   const resourceGroup = `vm-${slugRegion}-${timestamp}`;
   const lockKey = account.subscriptionId;
-  const ttl = getLockTimeoutSeconds(env);
+  const ttl = env.LOCK_TIMEOUT_SECONDS;
 
   try {
     await acquireSubscriptionLock({ lockKey, owner: params.taskId, timeoutSeconds: ttl, ttlSeconds: ttl });
@@ -106,7 +111,7 @@ async function runVmLifecycle(env: AppEnv, params: VmLifecycleParams): Promise<v
   const account = await getDecryptedAccountOrThrow(env, params.accountId);
   const client = new AzureArmClient(env, account);
   const lockKey = account.subscriptionId;
-  const ttl = getLockTimeoutSeconds(env);
+  const ttl = env.LOCK_TIMEOUT_SECONDS;
 
   try {
     await acquireSubscriptionLock({ lockKey, owner: params.taskId, timeoutSeconds: ttl, ttlSeconds: ttl });
@@ -139,7 +144,7 @@ async function runChangeIp(env: AppEnv, params: ChangeIpParams): Promise<void> {
   const account = await getDecryptedAccountOrThrow(env, params.accountId);
   const client = new AzureArmClient(env, account);
   const lockKey = account.subscriptionId;
-  const ttl = getLockTimeoutSeconds(env);
+  const ttl = env.LOCK_TIMEOUT_SECONDS;
 
   try {
     await acquireSubscriptionLock({ lockKey, owner: params.taskId, timeoutSeconds: ttl, ttlSeconds: ttl });
