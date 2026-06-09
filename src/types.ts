@@ -1,3 +1,5 @@
+import type { Database } from "bun:sqlite";
+
 export type JsonRecord = Record<string, unknown>;
 
 export type TaskStatus = "queued" | "running" | "success" | "failure";
@@ -9,61 +11,16 @@ export type WorkflowName =
   | "vm-lifecycle-workflow"
   | "change-ip-workflow";
 
-export interface WorkflowInstanceStatus {
-  status:
-    | "queued"
-    | "running"
-    | "paused"
-    | "errored"
-    | "terminated"
-    | "complete"
-    | "waiting"
-    | "waitingForPause"
-    | "unknown";
-  error?: {
-    name: string;
-    message: string;
-  };
-  output?: unknown;
-}
-
-export interface WorkflowInstanceHandle {
-  id: string;
-  status(): Promise<WorkflowInstanceStatus>;
-  sendEvent?(event: { type: string; payload?: unknown }): Promise<void>;
-}
-
-export interface WorkflowBinding<TParams = unknown> {
-  create(options?: { id?: string; params?: TParams }): Promise<WorkflowInstanceHandle>;
-  get(id: string): Promise<WorkflowInstanceHandle>;
-}
-
-export interface SqlQueryResult<TRow = unknown> {
-  results?: TRow[];
-}
-
-export interface SqlStatement {
-  bind(...values: unknown[]): SqlStatement;
-  first<TRow = unknown>(): Promise<TRow | null>;
-  all<TRow = unknown>(): Promise<SqlQueryResult<TRow>>;
-  run(): Promise<unknown>;
-}
-
-export interface SqlDatabase {
-  prepare(query: string): SqlStatement;
-  batch(statements: SqlStatement[]): Promise<unknown[]>;
-}
-
-export interface AssetBinding {
-  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-}
-
-export interface DurableObjectStubBinding {
-  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-}
-
-export interface DurableObjectNamespaceBinding {
-  getByName(name: string): DurableObjectStubBinding;
+export interface AppEnv {
+  APP_NAME: string;
+  APP_PASSWORD: string;
+  SESSION_SECRET: string;
+  ACCOUNT_ENCRYPTION_KEY: string;
+  SESSION_TTL_SECONDS: number;
+  LOCK_TIMEOUT_SECONDS: number;
+  AZURE_ARM_BASE_URL: string;
+  AZURE_AUTH_BASE_URL: string;
+  DB: Database;
 }
 
 export interface SessionState {
@@ -162,25 +119,15 @@ export interface TaskResponse {
   }>;
 }
 
-export interface AzureVmSummary {
-  name: string;
-  location: string;
-  vmSize: string;
-  status: string;
-  resourceGroup: string;
-  publicIp: string;
-  timeCreated: string | null;
-}
-
 export interface CreateVmParams {
   taskId: string;
   accountId: string;
   actor: string;
   region: string;
   vmSize: string;
-  osImage: "debian12" | "debian11" | "ubuntu22" | "ubuntu20";
+  osImage: string;
   diskSize: number;
-  ipType: "Static" | "Dynamic";
+  ipType: string;
   userData: string | null;
 }
 
@@ -199,21 +146,4 @@ export interface ChangeIpParams {
   actor: string;
   resourceGroup: string;
   vmName: string;
-}
-
-export interface AppEnv {
-  APP_NAME: string;
-  SESSION_TTL_SECONDS: number | string;
-  LOCK_TIMEOUT_SECONDS: number | string;
-  AZURE_ARM_BASE_URL: string;
-  AZURE_AUTH_BASE_URL: string;
-  APP_PASSWORD?: string;
-  SESSION_SECRET: string;
-  ACCOUNT_ENCRYPTION_KEY: string;
-  DB: SqlDatabase;
-  ASSETS: AssetBinding;
-  SUBSCRIPTION_LOCK: DurableObjectNamespaceBinding;
-  CREATE_VM_WORKFLOW: WorkflowBinding<CreateVmParams>;
-  VM_LIFECYCLE_WORKFLOW: WorkflowBinding<VmLifecycleParams>;
-  CHANGE_IP_WORKFLOW: WorkflowBinding<ChangeIpParams>;
 }
