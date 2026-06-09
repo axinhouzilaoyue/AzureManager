@@ -1,6 +1,6 @@
 services:
   azure-manager:
-    build: .
+    image: ghcr.io/axinhouzilaoyue/azure-manager:latest
     ports:
       - "8080:8080"
     volumes:

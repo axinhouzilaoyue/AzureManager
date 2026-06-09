@@ -4,20 +4,22 @@ Azure 虚拟机管理面板，运行在 Docker 容器中，支持管理多个 Az
 
 ## 快速部署
 
-### 1. 克隆仓库
+推送到 `main` 分支后，GitHub Actions 会自动构建并推送镜像到 `ghcr.io`，支持 `amd64` 和 `arm64`。
+
+### 1. 下载 docker-compose.yml
 
 ```bash
-git clone <repo-url>
-cd AzureManager
+curl -O https://raw.githubusercontent.com/axinhouzilaoyue/AzureManager/main/docker-compose.yml
+mkdir data
 ```
 
 ### 2. 生成密钥
 
 ```bash
-# SESSION_SECRET（任意长随机字符串）
+# SESSION_SECRET
 openssl rand -base64 48
 
-# ACCOUNT_ENCRYPTION_KEY（必须是 32 字节 base64）
+# ACCOUNT_ENCRYPTION_KEY（必须 32 字节）
 openssl rand -base64 32
 ```
 
@@ -39,6 +41,12 @@ docker compose up -d
 ```
 
 访问 `http://localhost:8080`，使用 `APP_PASSWORD` 登录。
+
+### 更新镜像
+
+```bash
+docker compose pull && docker compose up -d
+```
 
 ## 迁移
 
