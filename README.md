@@ -46,6 +46,6 @@ docker stop azure-manager && docker rm azure-manager
 
 ## 安全说明
 
-- `ACCOUNT_ENCRYPTION_KEY` 用于加密存储 Azure `client_secret`，请妥善保管，**修改后已有数据无法解密**
+- 加密密钥自动生成并保存在 `data/.secret`，请勿删除此文件，否则已保存的 Azure 凭据将无法解密
 - 建议在反向代理（nginx/caddy）后面运行并启用 HTTPS
-- `SESSION_SECRET` 修改后，已有登录会话会失效
+- `APP_PASSWORD` 修改后需重启容器生效，已有登录会话会失效
