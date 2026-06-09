@@ -210,12 +210,12 @@
     /* nav item */
     .ni {
       display: flex; align-items: center; gap: 10px;
-      padding: 8px 8px; border-radius: 10px;
+      padding: 10px 8px; border-radius: 10px;
       border: 1px solid transparent;
       color: var(--tx); cursor: pointer;
       transition: background var(--t), border-color var(--t);
       user-select: none; width: 100%; text-align: left;
-      background: transparent; font-family: inherit; margin-bottom: 2px;
+      background: transparent; font-family: inherit; margin-bottom: 4px;
     }
     .ni:hover  { background: color-mix(in srgb, var(--tx) 6%, transparent); border-color: color-mix(in srgb, var(--bd) 55%, transparent); }
     .ni.active { background: color-mix(in srgb, var(--tx) 9%, transparent); border-color: color-mix(in srgb, var(--bd3) 65%, transparent); }
@@ -452,7 +452,6 @@
             </span>
             <span class="ni-body">
               <span class="ni-title">概览</span>
-              <span class="ni-sub">状态与统计信息</span>
             </span>
           </button>
 
@@ -462,7 +461,6 @@
             </span>
             <span class="ni-body">
               <span class="ni-title">账户管理</span>
-              <span class="ni-sub">查看与操作虚拟机</span>
             </span>
           </button>
 
@@ -472,7 +470,6 @@
             </span>
             <span class="ni-body">
               <span class="ni-title">添加账户</span>
-              <span class="ni-sub">绑定 Azure 凭据</span>
             </span>
           </button>
 
@@ -481,8 +478,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
             </span>
             <span class="ni-body">
-              <span class="ni-title">全局设置</span>
-              <span class="ni-sub">默认开机脚本</span>
+              <span class="ni-title">开机脚本</span>
             </span>
           </button>
 
@@ -492,7 +488,6 @@
             </span>
             <span class="ni-body">
               <span class="ni-title">使用说明</span>
-              <span class="ni-sub">快速上手指南</span>
             </span>
           </button>
         </div>
@@ -506,7 +501,6 @@
             </span>
             <span class="ni-body">
               <span class="ni-title">退出登录</span>
-              <span class="ni-sub">结束当前会话</span>
             </span>
           </button>
         </div>
@@ -624,37 +618,35 @@
             <div class="ph-sub">绑定 Azure Service Principal 凭据</div>
           </div>
         </div>
-        <div style="max-width:560px;display:flex;flex-direction:column;gap:16px">
+        <div style="max-width:480px;display:flex;flex-direction:column;gap:16px">
           <div class="card">
             <div class="card-h"><span class="card-t">账户信息</span></div>
-            <div class="card-b" style="display:flex;flex-direction:column;gap:16px">
+            <div class="card-b" style="display:flex;flex-direction:column;gap:18px">
               <div class="fg">
                 <label class="fl">账户名称</label>
                 <input class="fi" type="text" id="add-name" placeholder="例：My Azure Subscription" />
+                <div class="fhint">用于在面板中识别该账户</div>
               </div>
-              <div class="frow">
-                <div class="fg">
-                  <label class="fl">Client ID</label>
-                  <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-…" />
-                </div>
-                <div class="fg">
-                  <label class="fl">Tenant ID</label>
-                  <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-…" />
-                </div>
+              <div class="fg">
+                <label class="fl">Client ID</label>
+                <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
               </div>
-              <div class="frow">
-                <div class="fg">
-                  <label class="fl">Client Secret</label>
-                  <input class="fi" type="password" id="add-sec" />
-                </div>
-                <div class="fg">
-                  <label class="fl">Subscription ID</label>
-                  <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-…" />
-                </div>
+              <div class="fg">
+                <label class="fl">Client Secret</label>
+                <input class="fi" type="password" id="add-sec" placeholder="Service Principal 密钥" />
+              </div>
+              <div class="fg">
+                <label class="fl">Tenant ID</label>
+                <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+              </div>
+              <div class="fg">
+                <label class="fl">Subscription ID</label>
+                <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
               </div>
               <div class="fg">
                 <label class="fl">过期日期 <span class="muted small">(可选)</span></label>
-                <input class="fi" type="date" id="add-exp" style="max-width:200px" />
+                <input class="fi" type="date" id="add-exp" style="max-width:180px" />
+                <div class="fhint">仅用于提醒，不影响功能</div>
               </div>
             </div>
           </div>
@@ -670,13 +662,13 @@
       <div class="page hidden" id="pg-settings">
         <div class="ph">
           <div>
-            <div class="ph-ttl">全局设置</div>
-            <div class="ph-sub">默认开机脚本配置</div>
+            <div class="ph-ttl">开机脚本</div>
+            <div class="ph-sub">创建虚拟机时的默认脚本</div>
           </div>
         </div>
         <div style="max-width:640px">
           <div class="card">
-            <div class="card-h"><span class="card-t">默认开机脚本（User Data）</span></div>
+            <div class="card-h"><span class="card-t">默认脚本（User Data）</span></div>
             <div class="card-b" style="display:flex;flex-direction:column;gap:12px">
               <textarea class="fi mono" id="startup-script" rows="14"></textarea>
               <div class="fhint">创建虚拟机时默认使用此脚本，可在创建时单独覆盖</div>
@@ -708,7 +700,7 @@
             <ul>
               <li>进入账户 → 点击「创建虚拟机」</li>
               <li>选择区域、实例规格、操作系统、磁盘大小</li>
-              <li>可选填开机脚本，留空则使用「全局设置」中的默认脚本</li>
+              <li>可选填开机脚本，留空则使用「开机脚本」中的默认脚本</li>
               <li>任务提交后可在「任务」标签页查看进度</li>
             </ul>
           </div>
