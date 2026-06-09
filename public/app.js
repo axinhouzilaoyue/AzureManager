@@ -58,21 +58,30 @@ function badge(status) {
 function renderAccounts() {
   const list = $('account-list');
   if (!S.accounts.length) {
-    list.innerHTML = '<div style="padding:6px 10px;font-size:13px;color:var(--text-tertiary)">暂无账户</div>';
+    list.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:var(--text-tertiary)">暂无账户</div>';
     return;
   }
+  const subStr = id => id ? id.slice(0, 8) + '…' : '';
   list.innerHTML = S.accounts.map(a => `
     <button class="nav-item ${a.id === S.selectedId ? 'active' : ''}" data-id="${a.id}" style="margin-bottom:2px">
       <span class="nav-icon">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
         </svg>
       </span>
-      <span class="nav-item-text">${esc(a.name)}</span>
+      <span class="nav-item-body">
+        <span class="nav-item-title">${esc(a.name)}</span>
+        <span class="nav-item-sub">${esc(subStr(a.subscriptionId))}</span>
+      </span>
     </button>`).join('');
   list.querySelectorAll('.nav-item[data-id]').forEach(el =>
     el.addEventListener('click', () => selectAccount(el.dataset.id)));
 }
+
+// ── sidebar toggle ────────────────────────────────────────────────
+$('btn-sidebar-toggle').addEventListener('click', () => {
+  $('sidebar').classList.toggle('collapsed');
+});
 
 function renderVms() {
   const tbody = $('vm-tbody');
