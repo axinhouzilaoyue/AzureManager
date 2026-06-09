@@ -1,17 +1,17 @@
 {
-  "name": "azure-panel-cf",
+  "name": "azure-manager",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "wrangler": "^4.71.0"
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
   }
 }
