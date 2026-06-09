@@ -1,4 +1,4 @@
-// ── state ──────────────────────────────────────────────────────────────────
+// ── state ──────────────────────────────────────────────────────
 const S = {
   accounts: [],
   selectedId: null,
@@ -6,12 +6,12 @@ const S = {
   vms: [],
   regions: [],
   activeTab: 'vms',
-  pendingAction: null,        // { kind, action?, resourceGroup, vmName }
-  pendingAccountMode: null,   // 'add' | 'edit'
+  pendingAction: null,
+  pendingAccountMode: null,
   trackingTasks: new Set(),
 };
 
-// ── api ────────────────────────────────────────────────────────────────────
+// ── api ─────────────────────────────────────────────────────────
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
@@ -19,21 +19,21 @@ async function api(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { status: res.status, data });
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { status: res.status });
   return data;
 }
 
-// ── toast ──────────────────────────────────────────────────────────────────
+// ── toast ────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
+  el.className = `toast${type === 'success' ? ' toast-success' : type === 'error' ? ' toast-error' : ''}`;
   el.textContent = msg;
   $('toast-container').appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
 
-// ── modal ──────────────────────────────────────────────────────────────────
-const openModal = id => $(id).classList.remove('hidden');
+// ── modal ────────────────────────────────────────────────────────
+const openModal  = id => $(id).classList.remove('hidden');
 const closeModal = id => $(id).classList.add('hidden');
 
 document.addEventListener('click', e => {
@@ -42,79 +42,95 @@ document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
 });
 
-// ── helpers ────────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-function setBadge(status) {
-  const map = { success: 'badge-success', failure: 'badge-error', running: 'badge-running', queued: 'badge-info' };
+function badge(status) {
+  const map = {
+    success: 'badge-success', failure: 'badge-error',
+    running: 'badge-running', queued: 'badge-info',
+  };
   return `<span class="badge ${map[status] || 'badge-info'}">${esc(status)}</span>`;
 }
 
-// ── render ─────────────────────────────────────────────────────────────────
+// ── render ───────────────────────────────────────────────────────
 function renderAccounts() {
-  $('sidebar-subtitle').textContent = `${S.accounts.length} 个账户`;
-  $('account-list').innerHTML = S.accounts.length
-    ? S.accounts.map(a => `
-        <div class="account-item ${a.id === S.selectedId ? 'active' : ''}" data-id="${a.id}">
-          <span class="account-dot ok"></span>
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${esc(a.name)}</span>
-        </div>`).join('')
-    : '<div style="padding:8px 8px;font-size:13px;color:var(--text2)">暂无账户</div>';
-
-  $('account-list').querySelectorAll('.account-item').forEach(el =>
+  const list = $('account-list');
+  if (!S.accounts.length) {
+    list.innerHTML = '<div style="padding:6px 10px;font-size:13px;color:var(--text-tertiary)">暂无账户</div>';
+    return;
+  }
+  list.innerHTML = S.accounts.map(a => `
+    <button class="nav-item ${a.id === S.selectedId ? 'active' : ''}" data-id="${a.id}" style="margin-bottom:2px">
+      <span class="nav-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+        </svg>
+      </span>
+      <span class="nav-item-text">${esc(a.name)}</span>
+    </button>`).join('');
+  list.querySelectorAll('.nav-item[data-id]').forEach(el =>
     el.addEventListener('click', () => selectAccount(el.dataset.id)));
 }
 
 function renderVms() {
   const tbody = $('vm-tbody');
   if (!S.vms.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty">暂无虚拟机</div></td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-secondary);font-size:13px">暂无虚拟机</td></tr>`;
     return;
   }
   tbody.innerHTML = S.vms.map(vm => {
-    const ps = vm.powerState || '-';
-    const bc = ps.includes('running') ? 'badge-success' : ps.includes('stopped') ? 'badge-error' : 'badge-info';
+    const ps  = vm.powerState || '-';
+    const bc  = ps.includes('running') ? 'badge-success' : ps.includes('stopped') ? 'badge-error' : 'badge-info';
+    const ip  = vm.publicIpAddress || '-';
+    const rg  = esc(vm.resourceGroup);
+    const vmn = esc(vm.name);
     return `<tr>
-      <td><strong>${esc(vm.name)}</strong></td>
-      <td style="color:var(--text2);font-size:12px">${esc(vm.resourceGroup)}</td>
-      <td style="color:var(--text2);font-size:12px">${esc(vm.location)}</td>
-      <td style="color:var(--text2);font-size:12px">${esc(vm.vmSize||'-')}</td>
+      <td><strong>${vmn}</strong></td>
+      <td class="text-muted" style="font-size:12px">${rg}</td>
+      <td class="text-muted" style="font-size:12px">${esc(vm.location)}</td>
+      <td class="text-muted" style="font-size:12px">${esc(vm.vmSize||'-')}</td>
       <td><span class="badge ${bc}">${esc(ps)}</span></td>
-      <td style="font-family:monospace;font-size:12px">${esc(vm.publicIpAddress||'-')}</td>
-      <td><div class="btn-group">
-        <button class="btn btn-sm" onclick="confirmVmAction('start','${esc(vm.resourceGroup)}','${esc(vm.name)}')">启动</button>
-        <button class="btn btn-sm" onclick="confirmVmAction('stop','${esc(vm.resourceGroup)}','${esc(vm.name)}')">停止</button>
-        <button class="btn btn-sm" onclick="confirmVmAction('restart','${esc(vm.resourceGroup)}','${esc(vm.name)}')">重启</button>
-        <button class="btn btn-sm" onclick="confirmChangeIp('${esc(vm.resourceGroup)}','${esc(vm.name)}')">换IP</button>
-        <button class="btn btn-sm btn-danger" onclick="confirmVmAction('delete','${esc(vm.resourceGroup)}','${esc(vm.name)}')">删除</button>
-      </div></td>
+      <td class="mono">${esc(ip)}</td>
+      <td>
+        <div class="btn-group">
+          <button class="btn btn-secondary btn-sm" onclick="confirmVmAction('start','${rg}','${vmn}')">启动</button>
+          <button class="btn btn-secondary btn-sm" onclick="confirmVmAction('stop','${rg}','${vmn}')">停止</button>
+          <button class="btn btn-secondary btn-sm" onclick="confirmVmAction('restart','${rg}','${vmn}')">重启</button>
+          <button class="btn btn-secondary btn-sm" onclick="confirmChangeIp('${rg}','${vmn}')">换 IP</button>
+          <button class="btn btn-danger-ghost btn-sm" onclick="confirmVmAction('delete','${rg}','${vmn}')">删除</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 }
 
 function renderTaskList(tasks) {
-  $('task-list').innerHTML = tasks.length
-    ? tasks.map(t => `
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:8px;cursor:pointer"
-             onclick="showTaskDetail('${t.id}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:13px;font-weight:500">${esc(t.message||t.type)}</span>
-            ${setBadge(t.status)}
-          </div>
-          <div style="font-size:12px;color:var(--text2)">${esc(t.createdAt||'')}</div>
-        </div>`).join('')
-    : '<div class="empty">暂无任务记录</div>';
+  const list = $('task-list');
+  if (!tasks.length) {
+    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:13px">暂无任务记录</div>`;
+    return;
+  }
+  list.innerHTML = tasks.map(t => `
+    <div class="task-card" onclick="showTaskDetail('${t.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
+        <span style="font-size:13px;font-weight:600">${esc(t.message || t.type)}</span>
+        ${badge(t.status)}
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary)">${esc(t.createdAt || '')}</div>
+    </div>`).join('');
 }
 
-// ── actions ────────────────────────────────────────────────────────────────
+// ── select account ───────────────────────────────────────────────
 async function selectAccount(id) {
   try {
     await api('POST', '/api/session', { accountId: id });
-    S.selectedId = id;
+    S.selectedId   = id;
     S.selectedName = S.accounts.find(a => a.id === id)?.name || '';
     renderAccounts();
-    $('account-title').textContent = S.selectedName;
+    $('account-title').textContent    = S.selectedName;
+    $('account-subtitle').textContent = `Azure 订阅`;
     $('view-no-account').classList.add('hidden');
     $('view-account').classList.remove('hidden');
     await Promise.all([loadVms(), loadRegions(), loadStartupScript()]);
@@ -148,21 +164,24 @@ async function loadStartupScript() {
   } catch { /* non-critical */ }
 }
 
-// ── vm action confirm ──────────────────────────────────────────────────────
+// ── vm actions ───────────────────────────────────────────────────
 function confirmVmAction(action, rg, vm) {
-  const labels = { start: '启动', stop: '停止', restart: '重启', delete: '删除资源组' };
+  const labels = { start:'启动', stop:'停止', restart:'重启', delete:'删除资源组' };
   S.pendingAction = { kind: 'vm-action', action, resourceGroup: rg, vmName: vm };
   $('confirm-title').textContent = `${labels[action]} — ${vm}`;
-  $('confirm-desc').textContent = action === 'delete'
+  $('confirm-desc').textContent  = action === 'delete'
     ? `确认删除资源组 ${rg}？此操作不可撤销，将删除该资源组内的所有资源。`
     : `确认对虚拟机 ${vm} 执行「${labels[action]}」操作？`;
+  const btn = $('btn-confirm');
+  btn.className = action === 'delete' ? 'btn btn-danger' : 'btn btn-primary';
   openModal('modal-confirm');
 }
 
 function confirmChangeIp(rg, vm) {
   S.pendingAction = { kind: 'change-ip', resourceGroup: rg, vmName: vm };
   $('confirm-title').textContent = `更换公网 IP — ${vm}`;
-  $('confirm-desc').textContent = `确认为虚拟机 ${vm} 更换公网 IP？操作期间 IP 将短暂不可用。`;
+  $('confirm-desc').textContent  = `确认为虚拟机 ${vm} 更换公网 IP？操作期间 IP 将短暂不可用。`;
+  $('btn-confirm').className = 'btn btn-primary';
   openModal('modal-confirm');
 }
 
@@ -178,12 +197,12 @@ $('btn-confirm').addEventListener('click', async () => {
     } else {
       task = await api('POST', '/api/vm-action', { action: p.action, resourceGroup: p.resourceGroup, vmName: p.vmName });
     }
-    toast(`操作已提交`, 'success');
+    toast('操作已提交', 'success');
     trackTask(task.taskId);
   } catch (e) { toast(e.message, 'error'); }
 });
 
-// ── task tracking ──────────────────────────────────────────────────────────
+// ── task tracking ────────────────────────────────────────────────
 function trackTask(taskId) {
   if (S.trackingTasks.has(taskId)) return;
   S.trackingTasks.add(taskId);
@@ -192,7 +211,7 @@ function trackTask(taskId) {
 
 async function pollTask(taskId) {
   for (let i = 0; i < 180; i++) {
-    await sleep(5000);
+    await new Promise(r => setTimeout(r, 5000));
     try {
       const t = await api('GET', `/api/task_status/${taskId}`);
       if (t.status === 'success') {
@@ -211,20 +230,18 @@ async function pollTask(taskId) {
   S.trackingTasks.delete(taskId);
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 async function showTaskDetail(taskId) {
   try {
     const t = await api('GET', `/api/task_status/${taskId}`);
-    $('task-info').innerHTML = `
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-        ${setBadge(t.status)}
-        <span style="font-size:13px">${esc(t.message||'')}</span>
+    $('task-detail-info').innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        ${badge(t.status)}
+        <span style="font-size:14px;font-weight:600">${esc(t.message || '')}</span>
       </div>
-      ${t.result ? `<pre style="font-size:12px;background:var(--bg2);padding:12px;border-radius:6px;overflow:auto;margin-bottom:12px;max-height:160px">${esc(JSON.stringify(t.result,null,2))}</pre>` : ''}`;
-    $('task-logs').innerHTML = (t.logs||[]).map(l => `
-      <div class="log-item ${l.level==='error'?'error':''}">
-        <span class="log-time">${esc(l.createdAt?.slice(11,19)||'')}</span>
+      ${t.result ? `<pre class="result-pre">${esc(JSON.stringify(t.result, null, 2))}</pre>` : ''}`;
+    $('task-detail-logs').innerHTML = (t.logs || []).map(l => `
+      <div class="log-item ${l.level === 'error' ? 'error' : ''}">
+        <span class="log-time">${esc(l.createdAt?.slice(11,19) || '')}</span>
         <span class="log-step">[${esc(l.step)}]</span>
         <span>${esc(l.message)}</span>
       </div>`).join('');
@@ -232,34 +249,37 @@ async function showTaskDetail(taskId) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
-// ── account modal ──────────────────────────────────────────────────────────
-$('btn-add-account').addEventListener('click', () => {
+// ── account modal ─────────────────────────────────────────────────
+function openAddAccount() {
   S.pendingAccountMode = 'add';
-  $('modal-account-title').textContent = '添加 Azure 账户';
-  $('account-edit-id').value = '';
-  $('account-name').value = '';
-  $('account-client-id').value = '';
-  $('account-client-secret').value = '';
-  $('account-tenant-id').value = '';
-  $('account-subscription-id').value = '';
-  $('account-expiration').value = '';
-  $('account-creds').style.display = '';
-  $('btn-check-creds').style.display = '';
-  $('account-check-result').className = 'hidden check-result';
+  $('modal-account-title').textContent     = '添加 Azure 账户';
+  $('account-edit-id').value               = '';
+  $('account-name').value                  = '';
+  $('account-client-id').value             = '';
+  $('account-client-secret').value         = '';
+  $('account-tenant-id').value             = '';
+  $('account-subscription-id').value       = '';
+  $('account-expiration').value            = '';
+  $('account-creds-section').style.display = '';
+  $('btn-check-creds').style.display       = '';
+  $('account-check-result').className      = 'check-result hidden';
   openModal('modal-account');
-});
+}
+
+$('btn-add-account').addEventListener('click', openAddAccount);
+$('btn-add-account-empty').addEventListener('click', openAddAccount);
 
 $('btn-edit-account').addEventListener('click', () => {
   const acc = S.accounts.find(a => a.id === S.selectedId);
   if (!acc) return;
   S.pendingAccountMode = 'edit';
-  $('modal-account-title').textContent = '编辑账户';
-  $('account-edit-id').value = acc.id;
-  $('account-name').value = acc.name;
-  $('account-expiration').value = acc.expirationDate || '';
-  $('account-creds').style.display = 'none';
-  $('btn-check-creds').style.display = 'none';
-  $('account-check-result').className = 'hidden check-result';
+  $('modal-account-title').textContent     = '编辑账户';
+  $('account-edit-id').value               = acc.id;
+  $('account-name').value                  = acc.name;
+  $('account-expiration').value            = acc.expirationDate || '';
+  $('account-creds-section').style.display = 'none';
+  $('btn-check-creds').style.display       = 'none';
+  $('account-check-result').className      = 'check-result hidden';
   openModal('modal-account');
 });
 
@@ -269,15 +289,15 @@ $('btn-check-creds').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = '检查中...';
   try {
     const d = await api('POST', '/api/accounts/check', {
-      clientId: $('account-client-id').value.trim(),
-      clientSecret: $('account-client-secret').value.trim(),
-      tenantId: $('account-tenant-id').value.trim(),
+      clientId:       $('account-client-id').value.trim(),
+      clientSecret:   $('account-client-secret').value.trim(),
+      tenantId:       $('account-tenant-id').value.trim(),
       subscriptionId: $('account-subscription-id').value.trim(),
     });
-    res.className = 'check-result ok';
-    res.textContent = `✓ ${d.subscriptionDisplayName} | ${d.state} | ${d.availableRegionCount} 个区域`;
+    res.className   = 'check-result ok';
+    res.textContent = `✓ ${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
   } catch (e) {
-    res.className = 'check-result fail';
+    res.className   = 'check-result fail';
     res.textContent = `✗ ${e.message}`;
   } finally {
     res.classList.remove('hidden');
@@ -290,28 +310,26 @@ $('btn-save-account').addEventListener('click', async () => {
   btn.disabled = true;
   try {
     if (S.pendingAccountMode === 'add') {
-      const exp = $('account-expiration').value;
       await api('POST', '/api/accounts', {
-        name: $('account-name').value.trim(),
-        clientId: $('account-client-id').value.trim(),
-        clientSecret: $('account-client-secret').value.trim(),
-        tenantId: $('account-tenant-id').value.trim(),
+        name:           $('account-name').value.trim(),
+        clientId:       $('account-client-id').value.trim(),
+        clientSecret:   $('account-client-secret').value.trim(),
+        tenantId:       $('account-tenant-id').value.trim(),
         subscriptionId: $('account-subscription-id').value.trim(),
-        expirationDate: exp || null,
+        expirationDate: $('account-expiration').value || null,
       });
       closeModal('modal-account');
       await loadAccounts();
       toast('账户已添加', 'success');
     } else {
-      const exp = $('account-expiration').value;
       await api('POST', '/api/accounts/edit', {
-        accountId: $('account-edit-id').value,
-        newName: $('account-name').value.trim(),
-        expirationDate: exp || null,
+        accountId:      $('account-edit-id').value,
+        newName:        $('account-name').value.trim(),
+        expirationDate: $('account-expiration').value || null,
       });
-      closeModal('modal-account');
       S.selectedName = $('account-name').value.trim();
       $('account-title').textContent = S.selectedName;
+      closeModal('modal-account');
       await loadAccounts();
       toast('账户已更新', 'success');
     }
@@ -319,7 +337,7 @@ $('btn-save-account').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
-// ── delete account ─────────────────────────────────────────────────────────
+// ── delete account ────────────────────────────────────────────────
 $('btn-delete-account').addEventListener('click', async () => {
   if (!S.selectedId) return;
   const acc = S.accounts.find(a => a.id === S.selectedId);
@@ -334,7 +352,7 @@ $('btn-delete-account').addEventListener('click', async () => {
   } catch (e) { toast(e.message, 'error'); }
 });
 
-// ── tabs ───────────────────────────────────────────────────────────────────
+// ── tabs ──────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     S.activeTab = t.dataset.tab;
@@ -342,16 +360,11 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     ['vms','tasks','settings'].forEach(name =>
       $(`tab-${name}`).classList.toggle('hidden', name !== S.activeTab));
-    if (S.activeTab === 'tasks') loadTaskHistory();
+    if (S.activeTab === 'tasks') renderTaskList([]);
   });
 });
 
-async function loadTaskHistory() {
-  // 任务历史需要后端 /api/tasks 接口，当前只展示空状态
-  renderTaskList([]);
-}
-
-// ── create VM ──────────────────────────────────────────────────────────────
+// ── create VM ─────────────────────────────────────────────────────
 $('btn-create-vm').addEventListener('click', () => openModal('modal-create-vm'));
 
 $('btn-submit-create-vm').addEventListener('click', async () => {
@@ -360,21 +373,21 @@ $('btn-submit-create-vm').addEventListener('click', async () => {
   try {
     const userData = $('create-userdata').value.trim();
     const task = await api('POST', '/api/create-vm', {
-      region: $('create-region').value,
-      vmSize: $('create-vm-size').value,
-      osImage: $('create-os').value,
+      region:   $('create-region').value,
+      vmSize:   $('create-vm-size').value,
+      osImage:  $('create-os').value,
       diskSize: parseInt($('create-disk').value),
-      ipType: $('create-ip-type').value,
+      ipType:   $('create-ip-type').value,
       userData: userData || null,
     });
     closeModal('modal-create-vm');
-    toast(`创建任务已提交`, 'success');
+    toast('创建任务已提交', 'success');
     trackTask(task.taskId);
   } catch (e) { toast(e.message, 'error'); }
   finally { btn.disabled = false; }
 });
 
-// ── settings ───────────────────────────────────────────────────────────────
+// ── settings ──────────────────────────────────────────────────────
 $('btn-save-script').addEventListener('click', async () => {
   const btn = $('btn-save-script');
   btn.disabled = true;
@@ -385,25 +398,24 @@ $('btn-save-script').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 
-// ── refresh ────────────────────────────────────────────────────────────────
+// ── refresh ───────────────────────────────────────────────────────
 $('btn-refresh').addEventListener('click', async () => {
   if (!S.selectedId) return;
   await loadVms();
   toast('已刷新');
 });
 
-// ── login / logout ─────────────────────────────────────────────────────────
+// ── login / logout ────────────────────────────────────────────────
 $('login-btn').addEventListener('click', async () => {
-  const pw = $('login-password').value;
   const err = $('login-error');
   err.classList.add('hidden');
   try {
-    await api('POST', '/auth/login', { password: pw });
+    await api('POST', '/auth/login', { password: $('login-password').value });
     await loadAccounts();
     $('login-screen').style.display = 'none';
     $('app').style.display = 'block';
   } catch (e) {
-    err.textContent = e.status === 401 ? '密码错误' : e.message;
+    err.textContent = e.status === 401 ? '密码错误，请重试' : e.message;
     err.classList.remove('hidden');
   }
 });
@@ -417,17 +429,17 @@ $('btn-logout').addEventListener('click', async () => {
   location.reload();
 });
 
-// ── init ───────────────────────────────────────────────────────────────────
+// ── init ──────────────────────────────────────────────────────────
 async function init() {
   try {
     const session = await api('GET', '/api/session');
-    if (!session.loggedIn) { return; }
+    if (!session.loggedIn) return;
     await loadAccounts();
     $('login-screen').style.display = 'none';
     $('app').style.display = 'block';
     if (session.selectedAccountId) {
-      S.selectedId = session.selectedAccountId;
-      S.selectedName = session.selectedAccountName;
+      S.selectedId   = session.selectedAccountId;
+      S.selectedName = session.selectedAccountName || '';
       const acc = S.accounts.find(a => a.id === S.selectedId);
       if (acc) {
         $('account-title').textContent = acc.name;

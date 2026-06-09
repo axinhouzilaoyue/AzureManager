@@ -6,169 +6,558 @@
   <title>Azure Manager</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
-      --bg: #faf9f5; --bg2: #f0eee8; --bg3: #e8e5de;
-      --border: #e3e1db; --text: #2d2a26; --text2: #6d6760;
-      --primary: #8b8680; --primary-hover: #7f7a74;
-      --success: #10b981; --error: #c65746; --warning: #f59e0b;
-      --sidebar-w: 240px; --radius: 8px;
+      --bg-secondary:   #faf9f5;
+      --bg-primary:     #f0eee8;
+      --bg-tertiary:    #e9e6df;
+      --bg-hover:       #e9e6df;
+      --floating-surface: #fffdf9;
+      --floating-border:  #d8d3ca;
+      --floating-shadow:  0 12px 26px rgba(0,0,0,0.14);
+
+      --text-primary:   #2d2a26;
+      --text-secondary: #6d6760;
+      --text-tertiary:  #a29c95;
+
+      --border-color:   #e3e1db;
+      --border-primary: #d5d2cb;
+      --border-hover:   #cecac4;
+
+      --primary-color:  #8b8680;
+      --primary-hover:  #7f7a74;
+      --primary-active: #726d67;
+
+      --success-color:  #10b981;
+      --error-color:    #c65746;
+
+      --success-badge-bg:   #d1fae5;
+      --success-badge-text: #065f46;
+      --failure-badge-bg:   rgba(198,87,70,0.14);
+      --failure-badge-text: #8a3a30;
+      --info-badge-bg:      rgba(139,134,128,0.18);
+      --info-badge-text:    #726d67;
+      --running-badge-bg:   #dbeafe;
+      --running-badge-text: #1e40af;
+
+      --shadow:    0 1px 2px rgba(0,0,0,0.08);
+      --shadow-lg: 0 10px 18px -3px rgba(0,0,0,0.1);
+
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+
+      --sidebar-w: 256px;
+      --t: 150ms ease;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
 
-    /* login */
-    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .login-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px; width: 360px; }
-    .login-card h1 { font-size: 20px; margin-bottom: 8px; }
-    .login-card p { color: var(--text2); margin-bottom: 24px; font-size: 13px; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
 
-    /* layout */
-    #app { display: none; }
-    .layout { display: flex; min-height: 100vh; }
+    /* ── Login ──────────────────────────────────── */
+    #login-screen { display: flex; min-height: 100vh; }
 
-    /* sidebar */
-    .sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto; }
-    .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
-    .sidebar-header h2 { font-size: 15px; font-weight: 600; }
-    .sidebar-header p { font-size: 12px; color: var(--text2); margin-top: 2px; }
-    .sidebar-section { padding: 12px 8px; border-bottom: 1px solid var(--border); flex: 1; overflow-y: auto; }
-    .sidebar-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 8px; margin-bottom: 4px; }
-    .account-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; transition: background 0.15s; font-size: 13px; }
-    .account-item:hover { background: var(--bg3); }
-    .account-item.active { background: var(--bg3); font-weight: 500; }
-    .account-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
-    .account-dot.ok { background: var(--success); }
-    .sidebar-footer { padding: 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+    .login-brand {
+      flex: 1;
+      background: #000;
+      display: flex; flex-direction: column;
+      justify-content: flex-end;
+      padding: 52px 56px;
+      overflow: hidden; position: relative;
+    }
+    @media (max-width: 768px) { .login-brand { display: none; } }
 
-    /* main */
-    .main { margin-left: var(--sidebar-w); flex: 1; padding: 24px; }
-    .main-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-    .main-header h1 { font-size: 18px; font-weight: 600; }
+    .login-brand-word {
+      font-size: 12vw; font-weight: 900;
+      letter-spacing: -0.03em; line-height: 0.88;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: brandIn 0.7s ease-out forwards;
+      user-select: none;
+    }
+    .login-brand-word:nth-child(1) { color: rgba(255,255,255,0.92); animation-delay: 0.05s; }
+    .login-brand-word:nth-child(2) { color: rgba(255,255,255,0.55); animation-delay: 0.25s; }
+    @keyframes brandIn {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .login-brand-sub {
+      margin-top: 22px; font-size: 12px;
+      color: rgba(255,255,255,0.28);
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
 
-    /* tabs */
-    .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
-    .tab { padding: 8px 16px; cursor: pointer; color: var(--text2); font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 500; }
+    .login-form-panel {
+      width: 460px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: 48px 40px;
+      background: var(--bg-secondary);
+    }
+    @media (max-width: 768px) { .login-form-panel { width: 100%; } }
 
-    /* table */
-    .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .login-form-inner {
+      width: 100%; max-width: 340px;
+      display: flex; flex-direction: column; gap: 28px;
+    }
+
+    .login-logo-icon {
+      width: 46px; height: 46px;
+      background: var(--primary-color);
+      border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 6px;
+    }
+    .login-logo-icon svg { color: #fff; }
+    .login-title   { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .login-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+
+    .login-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 28px;
+      display: flex; flex-direction: column; gap: 18px;
+    }
+
+    /* ── Forms ──────────────────────────────────── */
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label { font-size: 13px; font-weight: 600; }
+    .form-input {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 13px; font-family: inherit;
+      transition: border-color var(--t), box-shadow var(--t);
+      outline: none;
+    }
+    .form-input:focus {
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(139,134,128,0.18);
+    }
+    .form-hint   { font-size: 12px; color: var(--text-secondary); }
+    .form-row    { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } }
+    textarea.form-input { resize: vertical; min-height: 80px; }
+    select.form-input   { cursor: pointer; }
+
+    .error-box {
+      background: rgba(198,87,70,0.1);
+      border: 1px solid rgba(198,87,70,0.4);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      color: var(--error-color); font-size: 13px;
+    }
+
+    /* ── Buttons ────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      padding: 9px 14px;
+      font-size: 13px; font-weight: 600; font-family: inherit;
+      cursor: pointer; white-space: nowrap; line-height: 1;
+      transition: all var(--t);
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary       { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+    .btn-secondary     { background: var(--bg-tertiary); color: var(--text-primary); border-color: var(--border-color); }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
+    .btn-ghost         { background: transparent; color: var(--text-secondary); border-color: transparent; }
+    .btn-ghost:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-tertiary); }
+    .btn-danger        { background: var(--error-color); color: #fff; border-color: var(--error-color); }
+    .btn-danger:hover:not(:disabled) { background: #b04d3e; }
+    .btn-danger-ghost  { background: transparent; color: var(--error-color); border-color: rgba(198,87,70,0.35); }
+    .btn-danger-ghost:hover:not(:disabled) { background: rgba(198,87,70,0.08); }
+    .btn-sm   { padding: 6px 10px; font-size: 12px; }
+    .btn-lg   { padding: 11px 18px; font-size: 14px; }
+    .btn-full { width: 100%; }
+    .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ── App shell ──────────────────────────────── */
+    #app          { display: none; height: 100vh; overflow: hidden; }
+    .app-body     { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0;
+      height: 100vh; display: flex; flex-direction: column;
+      background: var(--bg-primary);
+      border-right: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+      overflow-y: auto; scrollbar-width: none;
+    }
+    .sidebar::-webkit-scrollbar { display: none; }
+
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 10px;
+      padding: 18px 16px 16px; flex-shrink: 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+    }
+    .sidebar-brand-icon {
+      width: 32px; height: 32px; flex-shrink: 0;
+      background: var(--primary-color);
+      border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sidebar-brand-icon svg { color: #fff; }
+    .sidebar-brand-name { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; }
+
+    .sidebar-section     { padding: 10px 10px; }
+    .sidebar-section + .sidebar-section {
+      border-top: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+    }
+    .sidebar-accounts    { flex: 1; overflow-y: auto; }
+    .sidebar-section-label {
+      padding: 0 10px 6px; font-size: 10.5px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: color-mix(in srgb, var(--text-primary) 40%, transparent);
+      user-select: none;
+    }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 10px;
+      border: 1px solid transparent;
+      color: var(--text-primary); font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      transition: background var(--t), border-color var(--t), transform var(--t);
+      user-select: none; width: 100%; text-align: left; background: transparent;
+      font-family: inherit;
+    }
+    .nav-item:hover {
+      background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+      border-color: color-mix(in srgb, var(--border-color) 58%, transparent);
+      transform: translateX(1px);
+    }
+    .nav-item.active {
+      background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+      border-color: color-mix(in srgb, var(--border-hover) 70%, transparent);
+    }
+    .nav-item.active .nav-icon {
+      background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0)),
+                  color-mix(in srgb, var(--primary-color) 14%, var(--bg-primary));
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 24%, transparent);
+      color: var(--primary-active);
+    }
+    .nav-icon {
+      width: 26px; height: 26px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 7px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0)),
+                  color-mix(in srgb, var(--bg-secondary) 84%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-primary) 82%, transparent);
+    }
+    .nav-icon svg { width: 14px; height: 14px; }
+    .nav-item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .sidebar-footer {
+      padding: 10px; flex-shrink: 0;
+      border-top: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+      display: flex; flex-direction: column; gap: 3px;
+    }
+
+    /* ── Content ────────────────────────────────── */
+    .content {
+      flex: 1; min-width: 0;
+      height: 100vh; overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .page {
+      flex: 1; padding: 28px clamp(20px, 3vw, 48px) 40px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .page-header {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    }
+    .page-title    { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+    .page-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 3px; }
+
+    /* empty state */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; padding: 64px 24px; text-align: center;
+    }
+    .empty-state-icon {
+      width: 52px; height: 52px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center; margin-bottom: 4px;
+    }
+    .empty-state h3 { font-size: 16px; font-weight: 700; }
+    .empty-state p  { font-size: 13px; color: var(--text-secondary); max-width: 280px; }
+
+    /* ── Tabs ───────────────────────────────────── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border-color); }
+    .tab {
+      padding: 10px 18px; font-size: 13px; font-weight: 600;
+      color: var(--text-secondary); cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color var(--t), border-color var(--t);
+    }
+    .tab:hover  { color: var(--text-primary); }
+    .tab.active { color: var(--text-primary); border-bottom-color: var(--primary-color); }
+
+    /* ── Card ───────────────────────────────────── */
+    .card { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--border-color);
+    }
+    .card-title { font-size: 14px; font-weight: 700; }
+    .card-body  { padding: 20px; }
+
+    /* ── Table ──────────────────────────────────── */
+    .table-wrap { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg3); border-bottom: 1px solid var(--border); }
-    td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    thead tr { background: var(--bg-tertiary); }
+    th {
+      text-align: left; padding: 10px 16px;
+      font-size: 11px; font-weight: 700; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-color); white-space: nowrap;
+    }
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+      vertical-align: middle;
+    }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(0,0,0,0.015); }
+    tbody tr:hover td { background: color-mix(in srgb, var(--bg-tertiary) 50%, transparent); }
 
-    /* badges */
-    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; }
-    .badge-success { background: #d1fae5; color: #065f46; }
-    .badge-error { background: #fee2e2; color: #991b1b; }
-    .badge-running { background: #dbeafe; color: #1e40af; }
-    .badge-info { background: var(--bg3); color: var(--text2); }
+    /* ── Badges ─────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 9px; border-radius: 99px;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+    }
+    .badge-success { background: var(--success-badge-bg); color: var(--success-badge-text); }
+    .badge-error   { background: var(--failure-badge-bg); color: var(--failure-badge-text); }
+    .badge-running { background: var(--running-badge-bg); color: var(--running-badge-text); }
+    .badge-info    { background: var(--info-badge-bg);    color: var(--info-badge-text); }
 
-    /* buttons */
-    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: inherit; white-space: nowrap; line-height: 1; }
-    .btn:hover { background: var(--bg3); }
-    .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
-    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-    .btn-danger { color: var(--error); border-color: #fca5a5; }
-    .btn-danger:hover { background: #fee2e2; }
-    .btn-sm { padding: 4px 10px; font-size: 12px; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
-
-    /* forms */
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
-    input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; transition: border-color 0.15s; outline: none; }
-    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
-    textarea { resize: vertical; min-height: 80px; }
-    .form-hint { font-size: 12px; color: var(--text2); margin-top: 4px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-    /* modal */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; }
-    .modal { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+    /* ── Modal ──────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.28);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2000; padding: 24px; backdrop-filter: blur(2px);
+    }
+    .modal {
+      background: var(--bg-primary); border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg); box-shadow: var(--floating-shadow);
+      width: 100%; max-width: 480px; max-height: 90vh;
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
     .modal-lg { max-width: 560px; }
-    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-    .modal-header h3 { font-size: 15px; font-weight: 600; }
-    .modal-body { padding: 20px; }
-    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--border); }
-    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text2); padding: 2px 6px; line-height: 1; border-radius: 4px; }
-    .modal-close:hover { background: var(--bg3); }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0;
+    }
+    .modal-title { font-size: 15px; font-weight: 700; }
+    .modal-close {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: var(--radius-sm);
+      color: var(--text-secondary); cursor: pointer; font-size: 18px; line-height: 1;
+      transition: background var(--t);
+    }
+    .modal-close:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+    .modal-body   { padding: 24px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .modal-footer {
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 16px 24px; border-top: 1px solid var(--border-color);
+      background: var(--bg-primary); flex-shrink: 0;
+    }
 
-    /* toast */
-    #toast-container { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-    .toast { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-width: 320px; animation: toast-in 0.2s ease; pointer-events: auto; }
-    .toast-success { border-left: 3px solid var(--success); }
-    .toast-error { border-left: 3px solid var(--error); }
-    @keyframes toast-in { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    /* ── Check result ───────────────────────────── */
+    .check-result { padding: 10px 14px; border-radius: var(--radius-md); font-size: 13px; }
+    .check-result.ok   { background: rgba(16,185,129,0.1); color: #065f46; border: 1px solid rgba(16,185,129,0.25); }
+    .check-result.fail { background: rgba(198,87,70,0.1); color: var(--error-color); border: 1px solid rgba(198,87,70,0.25); }
 
-    /* task log */
+    /* ── Toast ──────────────────────────────────── */
+    #toast-container {
+      position: fixed; top: 20px; right: 20px; z-index: 3000;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      background: var(--floating-surface); border: 1px solid var(--floating-border);
+      border-radius: var(--radius-md); padding: 12px 16px;
+      font-size: 13px; box-shadow: var(--floating-shadow);
+      max-width: 340px; min-width: 200px; pointer-events: auto;
+      animation: toastIn 0.2s ease;
+    }
+    .toast-success { border-left: 3px solid var(--success-color); }
+    .toast-error   { border-left: 3px solid var(--error-color); }
+    @keyframes toastIn {
+      from { transform: translateX(12px); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ── Task logs ──────────────────────────────── */
     .log-list { display: flex; flex-direction: column; gap: 3px; }
-    .log-item { display: grid; grid-template-columns: 60px 90px 1fr; gap: 8px; font-size: 12px; font-family: monospace; padding: 5px 8px; border-radius: 4px; background: var(--bg2); }
-    .log-item.error { background: #fee2e2; }
-    .log-time { color: var(--text2); }
-    .log-step { color: var(--primary); }
+    .log-item {
+      display: grid; grid-template-columns: 56px 90px 1fr; gap: 8px;
+      padding: 5px 10px; border-radius: 6px;
+      background: var(--bg-secondary);
+      font-size: 12px; font-family: "SF Mono", "Fira Code", "Fira Mono", monospace;
+    }
+    .log-item.error { background: var(--failure-badge-bg); }
+    .log-time  { color: var(--text-tertiary); }
+    .log-step  { color: var(--primary-active); font-weight: 600; }
 
-    /* misc */
-    .empty { text-align: center; padding: 48px 24px; color: var(--text2); font-size: 13px; }
-    .no-account { display: flex; align-items: center; justify-content: center; min-height: 300px; color: var(--text2); font-size: 14px; }
-    .check-result { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
-    .check-result.ok { background: #d1fae5; color: #065f46; }
-    .check-result.fail { background: #fee2e2; color: #991b1b; }
-    .hidden { display: none !important; }
+    /* ── Task card ──────────────────────────────── */
+    .task-card {
+      background: var(--bg-primary); border: 1px solid var(--border-color);
+      border-radius: var(--radius-md); padding: 14px 18px;
+      cursor: pointer;
+      transition: background var(--t), border-color var(--t);
+    }
+    .task-card:hover { background: var(--bg-tertiary); border-color: var(--border-hover); }
+
+    /* ── Misc ───────────────────────────────────── */
+    .text-muted { color: var(--text-secondary); }
+    .text-sm    { font-size: 12px; }
+    .mono       { font-family: "SF Mono", "Fira Code", "Fira Mono", monospace; font-size: 12px; }
+    .hidden     { display: none !important; }
+    .mt-2       { margin-top: 8px; }
+
+    pre.result-pre {
+      font-size: 12px; font-family: "SF Mono", "Fira Code", monospace;
+      background: var(--bg-secondary); border: 1px solid var(--border-color);
+      border-radius: var(--radius-md); padding: 14px;
+      overflow: auto; max-height: 180px;
+      white-space: pre-wrap; word-break: break-all;
+    }
   </style>
 </head>
 <body>
 
 <div id="toast-container"></div>
 
-<!-- Login -->
+<!-- ── Login ─────────────────────────────────────────────── -->
 <div id="login-screen">
-  <div class="login-card">
-    <h1>Azure Manager</h1>
-    <p>输入访问密码登录</p>
-    <div class="form-group">
-      <label for="login-password">密码</label>
-      <input type="password" id="login-password" placeholder="访问密码" autocomplete="current-password" />
+  <div class="login-brand">
+    <div class="login-brand-word">AZURE</div>
+    <div class="login-brand-word">MANAGER</div>
+    <div class="login-brand-sub">Virtual Machine Management Panel</div>
+  </div>
+  <div class="login-form-panel">
+    <div class="login-form-inner">
+      <div>
+        <div class="login-logo-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+        </div>
+        <div class="login-title" style="margin-top:12px">Azure Manager</div>
+        <div class="login-subtitle">输入访问密码登录管理面板</div>
+      </div>
+      <div class="login-card">
+        <div class="form-group">
+          <label class="form-label" for="login-password">访问密码</label>
+          <input class="form-input" type="password" id="login-password" placeholder="输入密码..." autocomplete="current-password" />
+        </div>
+        <div id="login-error" class="error-box hidden"></div>
+        <button class="btn btn-primary btn-full btn-lg" id="login-btn">登 录</button>
+      </div>
     </div>
-    <button class="btn btn-primary" style="width:100%" id="login-btn">登录</button>
-    <div id="login-error" class="hidden" style="margin-top:12px;color:var(--error);font-size:13px;"></div>
   </div>
 </div>
 
-<!-- App -->
+<!-- ── App ───────────────────────────────────────────────── -->
 <div id="app">
-  <div class="layout">
+  <div class="app-body">
+
+    <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sidebar-header">
-        <h2>Azure Manager</h2>
-        <p id="sidebar-subtitle">加载中...</p>
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+        </div>
+        <span class="sidebar-brand-name">Azure Manager</span>
       </div>
-      <div class="sidebar-section">
-        <div class="sidebar-label">Azure 账户</div>
+
+      <div class="sidebar-section sidebar-accounts">
+        <div class="sidebar-section-label">Azure 账户</div>
         <div id="account-list"></div>
       </div>
+
       <div class="sidebar-footer">
-        <button class="btn btn-sm" id="btn-add-account">+ 添加账户</button>
-        <button class="btn btn-sm" id="btn-logout">退出登录</button>
+        <button class="nav-item" id="btn-add-account">
+          <span class="nav-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+          </span>
+          <span class="nav-item-text">添加账户</span>
+        </button>
+        <button class="nav-item" id="btn-logout">
+          <span class="nav-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </span>
+          <span class="nav-item-text">退出登录</span>
+        </button>
       </div>
     </aside>
 
-    <main class="main">
-      <div id="view-no-account">
-        <div class="main-header"><h1>Azure Manager</h1></div>
-        <div class="no-account">请从左侧选择一个 Azure 账户</div>
+    <!-- Content -->
+    <div class="content">
+
+      <!-- No account -->
+      <div class="page" id="view-no-account">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Azure Manager</div>
+            <div class="page-subtitle">虚拟机管理面板</div>
+          </div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-tertiary)">
+              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+            </svg>
+          </div>
+          <h3>选择账户开始</h3>
+          <p>从左侧选择一个 Azure 账户，或点击下方添加新账户</p>
+          <button class="btn btn-primary mt-2" id="btn-add-account-empty">添加 Azure 账户</button>
+        </div>
       </div>
 
-      <div id="view-account" class="hidden">
-        <div class="main-header">
-          <h1 id="account-title">-</h1>
+      <!-- Account selected -->
+      <div class="page hidden" id="view-account">
+        <div class="page-header">
+          <div>
+            <div class="page-title" id="account-title">-</div>
+            <div class="page-subtitle" id="account-subtitle">Azure 订阅</div>
+          </div>
           <div class="btn-group">
-            <button class="btn btn-sm" id="btn-refresh">刷新</button>
-            <button class="btn btn-sm" id="btn-create-vm">创建虚拟机</button>
-            <button class="btn btn-sm" id="btn-edit-account">编辑</button>
-            <button class="btn btn-sm btn-danger" id="btn-delete-account">删除账户</button>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+              </svg>
+              刷新
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-create-vm">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+              创建虚拟机
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-edit-account">编辑</button>
+            <button class="btn btn-danger-ghost btn-sm" id="btn-delete-account">删除账户</button>
           </div>
         </div>
 
@@ -180,52 +569,79 @@
 
         <div id="tab-vms">
           <div class="table-wrap">
-            <table><thead><tr><th>名称</th><th>资源组</th><th>区域</th><th>大小</th><th>状态</th><th>公网 IP</th><th>操作</th></tr></thead>
-            <tbody id="vm-tbody"></tbody></table>
+            <table>
+              <thead><tr><th>名称</th><th>资源组</th><th>区域</th><th>规格</th><th>状态</th><th>公网 IP</th><th>操作</th></tr></thead>
+              <tbody id="vm-tbody"></tbody>
+            </table>
           </div>
         </div>
 
         <div id="tab-tasks" class="hidden">
-          <div id="task-list"></div>
+          <div id="task-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
 
         <div id="tab-settings" class="hidden">
-          <div style="max-width:600px">
-            <div class="form-group">
-              <label>全局开机脚本（User Data）</label>
-              <textarea id="startup-script" rows="12" style="font-family:monospace;font-size:12px"></textarea>
-              <div class="form-hint">创建虚拟机时默认使用此脚本，可在创建时覆盖</div>
+          <div style="max-width:640px">
+            <div class="card">
+              <div class="card-header"><span class="card-title">全局开机脚本（User Data）</span></div>
+              <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+                <textarea class="form-input mono" id="startup-script" rows="13"></textarea>
+                <div class="form-hint">创建虚拟机时默认使用此脚本，可在创建时单独覆盖</div>
+                <div><button class="btn btn-primary" id="btn-save-script">保存脚本</button></div>
+              </div>
             </div>
-            <button class="btn btn-primary" id="btn-save-script">保存脚本</button>
           </div>
         </div>
       </div>
-    </main>
+
+    </div>
   </div>
 </div>
 
-<!-- Modal: 添加/编辑账户 -->
+<!-- Modal: 账户（添加/编辑）-->
 <div id="modal-account" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-header">
-      <h3 id="modal-account-title">添加 Azure 账户</h3>
+      <span class="modal-title" id="modal-account-title">添加 Azure 账户</span>
       <button class="modal-close" data-close="modal-account">×</button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="account-edit-id" />
-      <div class="form-group"><label>账户名称</label><input type="text" id="account-name" /></div>
-      <div id="account-creds">
-        <div class="form-group"><label>Client ID</label><input type="text" id="account-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
-        <div class="form-group"><label>Client Secret</label><input type="password" id="account-client-secret" /></div>
-        <div class="form-group"><label>Tenant ID</label><input type="text" id="account-tenant-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
-        <div class="form-group"><label>Subscription ID</label><input type="text" id="account-subscription-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
+      <div class="form-group">
+        <label class="form-label">账户名称</label>
+        <input class="form-input" type="text" id="account-name" placeholder="例：My Azure Subscription" />
       </div>
-      <div class="form-group"><label>过期日期（可选）</label><input type="date" id="account-expiration" /></div>
-      <div id="account-check-result" class="hidden check-result"></div>
+      <div id="account-creds-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Client ID</label>
+            <input class="form-input mono" type="text" id="account-client-id" placeholder="xxxxxxxx-xxxx-…" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tenant ID</label>
+            <input class="form-input mono" type="text" id="account-tenant-id" placeholder="xxxxxxxx-xxxx-…" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Client Secret</label>
+            <input class="form-input" type="password" id="account-client-secret" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subscription ID</label>
+            <input class="form-input mono" type="text" id="account-subscription-id" placeholder="xxxxxxxx-xxxx-…" />
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">过期日期 <span class="text-muted text-sm">(可选)</span></label>
+        <input class="form-input" type="date" id="account-expiration" />
+      </div>
+      <div id="account-check-result" class="check-result hidden"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn" data-close="modal-account">取消</button>
-      <button class="btn" id="btn-check-creds" style="display:none">检查账户</button>
+      <button class="btn btn-ghost" data-close="modal-account">取消</button>
+      <button class="btn btn-secondary" id="btn-check-creds" style="display:none">检查账户</button>
       <button class="btn btn-primary" id="btn-save-account">保存</button>
     </div>
   </div>
@@ -235,58 +651,73 @@
 <div id="modal-create-vm" class="modal-overlay hidden">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <h3>创建虚拟机</h3>
+      <span class="modal-title">创建虚拟机</span>
       <button class="modal-close" data-close="modal-create-vm">×</button>
     </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label>区域</label><select id="create-region"><option value="">加载中...</option></select></div>
-        <div class="form-group"><label>实例类型</label>
-          <select id="create-vm-size">
-            <option value="Standard_B1s">Standard_B1s (1vCPU / 1GB)</option>
-            <option value="Standard_B1ms">Standard_B1ms (1vCPU / 2GB)</option>
-            <option value="Standard_B2s">Standard_B2s (2vCPU / 4GB)</option>
-            <option value="Standard_B2ms">Standard_B2ms (2vCPU / 8GB)</option>
-            <option value="Standard_D2s_v3">Standard_D2s_v3 (2vCPU / 8GB)</option>
+        <div class="form-group">
+          <label class="form-label">区域</label>
+          <select class="form-input" id="create-region"><option value="">加载中...</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">实例规格</label>
+          <select class="form-input" id="create-vm-size">
+            <option value="Standard_B1s">Standard_B1s — 1vCPU / 1 GB</option>
+            <option value="Standard_B1ms">Standard_B1ms — 1vCPU / 2 GB</option>
+            <option value="Standard_B2s">Standard_B2s — 2vCPU / 4 GB</option>
+            <option value="Standard_B2ms">Standard_B2ms — 2vCPU / 8 GB</option>
+            <option value="Standard_D2s_v3">Standard_D2s_v3 — 2vCPU / 8 GB</option>
+            <option value="Standard_D4s_v3">Standard_D4s_v3 — 4vCPU / 16 GB</option>
           </select>
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>操作系统</label>
-          <select id="create-os">
+        <div class="form-group">
+          <label class="form-label">操作系统</label>
+          <select class="form-input" id="create-os">
             <option value="debian12">Debian 12</option>
             <option value="debian11">Debian 11</option>
-            <option value="ubuntu22">Ubuntu 22.04</option>
-            <option value="ubuntu20">Ubuntu 20.04</option>
+            <option value="ubuntu22">Ubuntu 22.04 LTS</option>
+            <option value="ubuntu20">Ubuntu 20.04 LTS</option>
           </select>
         </div>
-        <div class="form-group"><label>磁盘大小 (GB)</label><input type="number" id="create-disk" value="30" min="30" max="1024" /></div>
-      </div>
-      <div class="form-group"><label>公网 IP 类型</label>
-        <select id="create-ip-type"><option value="Static">静态 (Static)</option><option value="Dynamic">动态 (Dynamic)</option></select>
+        <div class="form-group">
+          <label class="form-label">磁盘大小 (GB)</label>
+          <input class="form-input" type="number" id="create-disk" value="30" min="30" max="1024" />
+        </div>
       </div>
       <div class="form-group">
-        <label>开机脚本（留空使用全局默认）</label>
-        <textarea id="create-userdata" rows="5" style="font-family:monospace;font-size:12px" placeholder="#!/bin/bash"></textarea>
+        <label class="form-label">公网 IP 类型</label>
+        <select class="form-input" id="create-ip-type" style="max-width:220px">
+          <option value="Static">静态 IP (Static)</option>
+          <option value="Dynamic">动态 IP (Dynamic)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">开机脚本 <span class="text-muted text-sm">(留空使用全局默认)</span></label>
+        <textarea class="form-input mono" id="create-userdata" rows="5" placeholder="#!/bin/bash&#10;..."></textarea>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn" data-close="modal-create-vm">取消</button>
-      <button class="btn btn-primary" id="btn-submit-create-vm">创建</button>
+      <button class="btn btn-ghost" data-close="modal-create-vm">取消</button>
+      <button class="btn btn-primary" id="btn-submit-create-vm">创建虚拟机</button>
     </div>
   </div>
 </div>
 
-<!-- Modal: VM 操作确认 -->
+<!-- Modal: 确认 -->
 <div id="modal-confirm" class="modal-overlay hidden">
-  <div class="modal">
+  <div class="modal" style="max-width:400px">
     <div class="modal-header">
-      <h3 id="confirm-title">确认操作</h3>
+      <span class="modal-title" id="confirm-title">确认操作</span>
       <button class="modal-close" data-close="modal-confirm">×</button>
     </div>
-    <div class="modal-body"><p id="confirm-desc" style="font-size:14px;line-height:1.6"></p></div>
+    <div class="modal-body" style="gap:0">
+      <p id="confirm-desc" style="font-size:14px;line-height:1.7;color:var(--text-secondary)"></p>
+    </div>
     <div class="modal-footer">
-      <button class="btn" data-close="modal-confirm">取消</button>
+      <button class="btn btn-ghost" data-close="modal-confirm">取消</button>
       <button class="btn btn-primary" id="btn-confirm">确认</button>
     </div>
   </div>
@@ -296,12 +727,15 @@
 <div id="modal-task" class="modal-overlay hidden">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <h3>任务详情</h3>
+      <span class="modal-title">任务详情</span>
       <button class="modal-close" data-close="modal-task">×</button>
     </div>
     <div class="modal-body">
-      <div id="task-info" style="margin-bottom:16px"></div>
-      <div class="log-list" id="task-logs"></div>
+      <div id="task-detail-info"></div>
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">执行日志</div>
+        <div class="log-list" id="task-detail-logs"></div>
+      </div>
     </div>
   </div>
 </div>
