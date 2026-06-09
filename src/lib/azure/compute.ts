@@ -74,7 +74,7 @@ export async function listVirtualMachines(
     }),
   );
 
-  return summaries.sort((left, right) => left.name.localeCompare(right.name));
+  return summaries.sort((left: AzureVmSummary, right: AzureVmSummary) => left.name.localeCompare(right.name));
 }
 
 export async function getVirtualMachine(

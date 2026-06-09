@@ -147,3 +147,13 @@ export interface ChangeIpParams {
   resourceGroup: string;
   vmName: string;
 }
+
+export interface AzureVmSummary {
+  name: string;
+  location: string;
+  vmSize: string;
+  status: string;
+  resourceGroup: string;
+  publicIp: string;
+  timeCreated: string | null;
+}
