@@ -6,17 +6,7 @@ Azure 虚拟机管理面板，运行在 Docker 容器中，支持管理多个 Az
 
 推送到 `main` 分支后，GitHub Actions 会自动构建并推送镜像到 `ghcr.io`，支持 `amd64` 和 `arm64`。
 
-### 1. 生成密钥
-
-```bash
-# SESSION_SECRET
-openssl rand -base64 48
-
-# ACCOUNT_ENCRYPTION_KEY（必须 32 字节）
-openssl rand -base64 32
-```
-
-### 2. 启动
+### 1. 启动
 
 ```bash
 docker run -d \
@@ -25,12 +15,12 @@ docker run -d \
   -p 8080:8080 \
   -v $(pwd)/data:/app/data \
   -e APP_PASSWORD="your-login-password" \
-  -e SESSION_SECRET="your-session-secret" \
-  -e ACCOUNT_ENCRYPTION_KEY="your-32-byte-base64-key" \
   ghcr.io/axinhouzilaoyue/azure-manager:latest
 ```
 
 访问 `http://localhost:8080`，使用 `APP_PASSWORD` 登录。
+
+首次启动时，加密密钥会自动生成并保存到 `data/.secret`，无需手动配置。
 
 ### 更新镜像
 
@@ -42,7 +32,7 @@ docker stop azure-manager && docker rm azure-manager
 
 ## 迁移
 
-数据存储在 `./data/azure-manager.db`（SQLite 文件）。迁移只需复制此文件到新机器，并使用相同的 `ACCOUNT_ENCRYPTION_KEY`。
+复制整个 `data/` 目录到新机器即可，其中包含数据库和自动生成的加密密钥，无需额外配置。
 
 ## 功能
 

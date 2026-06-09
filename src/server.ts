@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { AppEnv } from "./types";
+import { toBase64Url } from "./lib/utils";
 import { createLogoutCookie, createLoginCookie, createSelectionCookie, getAuthContext, requireAuth } from "./lib/auth";
 import {
   accountNameExists,
@@ -35,14 +36,32 @@ import {
 import { errorResponse, jsonResponse, readJson } from "./lib/utils";
 import type { ZodType } from "zod";
 
-// ---- env bootstrap ----
-function requireEnv(name: string): string {
-  const val = process.env[name];
-  if (!val) throw new Error(`Missing required env var: ${name}`);
-  return val;
+// ---- secrets ----
+interface Secrets {
+  sessionSecret: string;
+  encryptionKey: string;
 }
 
+function loadOrCreateSecrets(): Secrets {
+  const path = "data/.secret";
+  if (existsSync(path)) {
+    return JSON.parse(readFileSync(path, "utf8")) as Secrets;
+  }
+  const secrets: Secrets = {
+    sessionSecret: toBase64Url(crypto.getRandomValues(new Uint8Array(48))),
+    encryptionKey: toBase64Url(crypto.getRandomValues(new Uint8Array(32))),
+  };
+  writeFileSync(path, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+  console.log("First run: generated secrets saved to data/.secret");
+  return secrets;
+}
+
+// ---- env bootstrap ----
+const APP_PASSWORD = process.env.APP_PASSWORD;
+if (!APP_PASSWORD) throw new Error("Missing required env var: APP_PASSWORD");
+
 mkdirSync("data", { recursive: true });
+const secrets = loadOrCreateSecrets();
 const db = new Database("data/azure-manager.db");
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
@@ -50,9 +69,9 @@ initializeDatabase(db);
 
 const ENV: AppEnv = {
   APP_NAME: process.env.APP_NAME ?? "Azure VM Management Panel",
-  APP_PASSWORD: requireEnv("APP_PASSWORD"),
-  SESSION_SECRET: requireEnv("SESSION_SECRET"),
-  ACCOUNT_ENCRYPTION_KEY: requireEnv("ACCOUNT_ENCRYPTION_KEY"),
+  APP_PASSWORD,
+  SESSION_SECRET: secrets.sessionSecret,
+  ACCOUNT_ENCRYPTION_KEY: secrets.encryptionKey,
   SESSION_TTL_SECONDS: parseInt(process.env.SESSION_TTL_SECONDS ?? "604800"),
   LOCK_TIMEOUT_SECONDS: parseInt(process.env.LOCK_TIMEOUT_SECONDS ?? "900"),
   AZURE_ARM_BASE_URL: process.env.AZURE_ARM_BASE_URL ?? "https://management.azure.com",
