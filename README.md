@@ -6,14 +6,7 @@ Azure 虚拟机管理面板，运行在 Docker 容器中，支持管理多个 Az
 
 推送到 `main` 分支后，GitHub Actions 会自动构建并推送镜像到 `ghcr.io`，支持 `amd64` 和 `arm64`。
 
-### 1. 下载 docker-compose.yml
-
-```bash
-curl -O https://raw.githubusercontent.com/axinhouzilaoyue/AzureManager/main/docker-compose.yml
-mkdir data
-```
-
-### 2. 生成密钥
+### 1. 生成密钥
 
 ```bash
 # SESSION_SECRET
@@ -23,21 +16,18 @@ openssl rand -base64 48
 openssl rand -base64 32
 ```
 
-### 3. 配置环境变量
-
-编辑 `docker-compose.yml`，填入密钥：
-
-```yaml
-environment:
-  APP_PASSWORD: "your-login-password"
-  SESSION_SECRET: "your-session-secret"
-  ACCOUNT_ENCRYPTION_KEY: "your-32-byte-base64-key"
-```
-
-### 4. 启动
+### 2. 启动
 
 ```bash
-docker compose up -d
+docker run -d \
+  --name azure-manager \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -e APP_PASSWORD="your-login-password" \
+  -e SESSION_SECRET="your-session-secret" \
+  -e ACCOUNT_ENCRYPTION_KEY="your-32-byte-base64-key" \
+  ghcr.io/axinhouzilaoyue/azure-manager:latest
 ```
 
 访问 `http://localhost:8080`，使用 `APP_PASSWORD` 登录。
@@ -45,7 +35,9 @@ docker compose up -d
 ### 更新镜像
 
 ```bash
-docker compose pull && docker compose up -d
+docker pull ghcr.io/axinhouzilaoyue/azure-manager:latest
+docker stop azure-manager && docker rm azure-manager
+# 重新执行上面的 docker run 命令
 ```
 
 ## 迁移
