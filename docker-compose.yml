@@ -1,0 +1,12 @@
+services:
+  azure-manager:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      APP_PASSWORD: "change-me"
+      SESSION_SECRET: "change-me-at-least-32-chars-long"
+      ACCOUNT_ENCRYPTION_KEY: "change-me-exactly-32-bytes-base64"
+    restart: unless-stopped

@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+.git/
+data/
+docs/
+*.md
+.DS_Store
