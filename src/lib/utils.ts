@@ -64,7 +64,7 @@ export function createCookie(name: string, value: string, options: {
     parts.push("HttpOnly");
   }
 
-  if (options.secure ?? true) {
+  if (options.secure ?? false) {
     parts.push("Secure");
   }
 
