@@ -1,1140 +1,311 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Azure VM Management Panel</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Azure Manager</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      color-scheme: light;
-      --page-bg: #f5f5f7;
-      --surface: rgba(255, 255, 255, 0.86);
-      --surface-strong: #ffffff;
-      --surface-soft: #f8f8fb;
-      --line: rgba(29, 29, 31, 0.1);
-      --line-strong: rgba(29, 29, 31, 0.18);
-      --ink: #1d1d1f;
-      --muted: #6e6e73;
-      --muted-strong: #424245;
-      --blue: #0071e3;
-      --blue-hover: #0077ed;
-      --green: #2f9e44;
-      --amber: #b25a00;
-      --red: #d92d20;
-      --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.08);
-      --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.06);
-      --radius: 8px;
-    }
-
-    * {
-      letter-spacing: 0;
-    }
-
-    body {
-      min-height: 100vh;
-      color: var(--ink);
-      background: var(--page-bg);
-      background-image: linear-gradient(180deg, #ffffff 0, #f5f5f7 360px);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", sans-serif;
-      text-rendering: optimizeLegibility;
-    }
-
-    .shell {
-      width: min(1440px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 20px 0 40px;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 12px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      min-height: 64px;
-      margin-bottom: 18px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: rgba(255, 255, 255, 0.78);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
-      backdrop-filter: saturate(180%) blur(20px);
-    }
-
-    .brand-lockup {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      min-width: 0;
-    }
-
-    .min-w-0 {
-      min-width: 0;
-    }
-
-    .brand-mark {
-      display: grid;
-      width: 36px;
-      height: 36px;
-      place-items: center;
-      border-radius: var(--radius);
-      color: #fff;
-      background: linear-gradient(135deg, #1d1d1f, #0071e3);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
-      flex: 0 0 auto;
-      font-weight: 700;
-    }
-
-    .brand-title {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
-      line-height: 1.1;
-      white-space: nowrap;
-    }
-
-    .brand-subtitle {
-      margin: 0.15rem 0 0;
-      color: var(--muted);
-      font-size: 0.82rem;
-      line-height: 1.2;
-    }
-
-    .topbar-actions,
-    .panel-actions,
-    .action-bar,
-    .button-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
-    #logoutBtn {
-      display: none;
-    }
-
-    body.authenticated #logoutBtn {
-      display: inline-flex;
-    }
-
-    .status-pill,
-    .context-chip,
-    .account-inline-hint {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-      min-height: 32px;
-      padding: 0.35rem 0.75rem;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.72);
-      color: var(--muted-strong);
-      font-size: 0.84rem;
-      white-space: nowrap;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--green);
-      box-shadow: 0 0 0 4px rgba(47, 158, 68, 0.12);
-    }
-
-    .context-chip {
-      border-color: rgba(0, 113, 227, 0.24);
-      background: rgba(0, 113, 227, 0.08);
-      color: #0058b0;
-    }
-
-    .context-chip[data-empty="true"] {
-      border-color: var(--line);
-      background: rgba(255, 255, 255, 0.72);
-      color: var(--muted);
-    }
-
-    .login-shell {
-      display: grid;
-      min-height: calc(100vh - 150px);
-      place-items: center;
-      padding: 32px 0;
-    }
-
-    .login-panel {
-      width: min(460px, 100%);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--surface);
-      box-shadow: var(--shadow-soft);
-      backdrop-filter: saturate(180%) blur(20px);
-    }
-
-    .login-panel .card-body {
-      padding: 28px;
-    }
-
-    .app-hidden {
-      display: none !important;
-    }
-
-    .overview {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(520px, 1.8fr);
-      gap: 1rem;
-      margin-bottom: 1rem;
-    }
-
-    .overview-copy,
-    .metric-grid {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--surface);
-      box-shadow: var(--shadow-panel);
-      backdrop-filter: saturate(180%) blur(20px);
-    }
-
-    .overview-copy {
-      display: flex;
-      min-height: 174px;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 22px;
-    }
-
-    .eyebrow,
-    .section-title {
-      margin-bottom: 0.45rem;
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .page-title {
-      margin: 0;
-      font-size: 2rem;
-      font-weight: 760;
-      line-height: 1.08;
-    }
-
-    .page-copy {
-      margin: 0.6rem 0 0;
-      max-width: 58ch;
-      color: var(--muted);
-      font-size: 0.96rem;
-      line-height: 1.55;
-    }
-
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      overflow: hidden;
-    }
-
-    .metric-tile {
-      min-height: 174px;
-      padding: 20px;
-      border-right: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.5);
-    }
-
-    .metric-tile:last-child {
-      border-right: 0;
-    }
-
-    .metric-label {
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 700;
-    }
-
-    .metric-value {
-      margin-top: 0.8rem;
-      font-size: 2.35rem;
-      font-weight: 760;
-      line-height: 1;
-    }
-
-    .metric-note {
-      margin-top: 0.75rem;
-      color: var(--muted);
-      font-size: 0.84rem;
-      line-height: 1.35;
-    }
-
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--surface-strong);
-      box-shadow: var(--shadow-panel);
-      overflow: hidden;
-    }
-
-    .panel-body {
-      padding: 20px;
-    }
-
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-      padding: 18px 20px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(248, 248, 251, 0.82);
-    }
-
-    .panel-title {
-      margin: 0;
-      font-size: 1.05rem;
-      font-weight: 760;
-    }
-
-    .panel-subtitle {
-      margin: 0.25rem 0 0;
-      color: var(--muted);
-      font-size: 0.86rem;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.42rem;
-      min-height: 36px;
-      border-radius: var(--radius);
-      font-weight: 700;
-      box-shadow: none;
-      transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,
-        transform 0.16s ease, box-shadow 0.16s ease;
-    }
-
-    .btn-sm {
-      min-height: 32px;
-    }
-
-    .btn svg,
-    .status-pill svg {
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto;
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 7px 18px rgba(0, 0, 0, 0.08);
-    }
-
-    .btn:focus-visible,
-    .form-control:focus,
-    .form-select:focus {
-      border-color: rgba(0, 113, 227, 0.48);
-      box-shadow: 0 0 0 0.22rem rgba(0, 113, 227, 0.14);
-    }
-
-    .btn-primary {
-      background: var(--blue);
-      border-color: var(--blue);
-    }
-
-    .btn-primary:hover:not(:disabled),
-    .btn-primary:active,
-    .btn-primary:focus-visible {
-      background: var(--blue-hover);
-      border-color: var(--blue-hover);
-    }
-
-    .btn-outline-primary {
-      color: var(--blue);
-      border-color: rgba(0, 113, 227, 0.28);
-      background: #fff;
-    }
-
-    .btn-outline-primary:hover:not(:disabled),
-    .btn-outline-primary:active,
-    .btn-outline-primary:focus-visible {
-      color: #0058b0;
-      border-color: rgba(0, 113, 227, 0.42);
-      background: rgba(0, 113, 227, 0.08);
-    }
-
-    .btn-secondary,
-    .btn-outline-secondary {
-      color: var(--muted-strong);
-      background: #f1f1f4;
-      border-color: rgba(29, 29, 31, 0.12);
-    }
-
-    .btn-secondary:hover:not(:disabled),
-    .btn-outline-secondary:hover:not(:disabled),
-    .btn-secondary:active,
-    .btn-outline-secondary:active,
-    .btn-secondary:focus-visible,
-    .btn-outline-secondary:focus-visible {
-      color: var(--ink);
-      background: #e8e8ed;
-      border-color: rgba(29, 29, 31, 0.18);
-    }
-
-    .btn-success {
-      color: #fff;
-      background: var(--green);
-      border-color: var(--green);
-    }
-
-    .btn-warning {
-      color: #fff;
-      background: var(--amber);
-      border-color: var(--amber);
-    }
-
-    .btn-info {
-      color: #fff;
-      background: #2364aa;
-      border-color: #2364aa;
-    }
-
-    .btn-danger,
-    .btn-outline-danger:hover:not(:disabled),
-    .btn-outline-danger:active,
-    .btn-outline-danger:focus-visible {
-      color: #fff;
-      background: var(--red);
-      border-color: var(--red);
-    }
-
-    .btn-outline-danger {
-      color: var(--red);
-      background: #fff;
-      border-color: rgba(217, 45, 32, 0.25);
-    }
-
-    .btn:disabled {
-      color: #a1a1a6;
-      background: #ececf0;
-      border-color: #e1e1e6;
-      box-shadow: none;
-      transform: none;
-      opacity: 1;
-    }
-
-    .form-control,
-    .form-select,
-    .modal-content {
-      border-radius: var(--radius);
-    }
-
-    .form-control,
-    .form-select {
-      border-color: rgba(29, 29, 31, 0.14);
-      background-color: #fbfbfd;
-    }
-
-    .table {
-      margin-bottom: 0;
-      color: var(--ink);
-    }
-
-    .table thead th {
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 760;
-      text-transform: uppercase;
-    }
-
-    .table tbody td {
-      border-color: rgba(29, 29, 31, 0.07);
-      padding-top: 0.9rem;
-      padding-bottom: 0.9rem;
-      vertical-align: middle;
-    }
-
-    .table-striped > tbody > tr:nth-of-type(odd) > * {
-      --bs-table-bg-type: rgba(248, 248, 251, 0.58);
-    }
-
-    .table-hover tbody tr {
-      cursor: pointer;
-    }
-
-    .table-hover tbody tr:hover td {
-      background-color: rgba(0, 113, 227, 0.045);
-    }
-
-    .table-hover tbody tr.table-active td {
-      background-color: rgba(0, 113, 227, 0.09) !important;
-    }
-
-    .table-hover tbody tr.table-active td:first-child {
-      box-shadow: inset 3px 0 0 var(--blue);
-    }
-
-    .badge {
-      border-radius: 999px;
-      font-weight: 700;
-    }
-
-    .log-surface,
-    .guide-surface {
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: var(--radius);
-      background: #111113;
-      color: #e5e5ea;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-
-    .log-surface {
-      height: 240px;
-      font-size: 0.88rem;
-    }
-
-    .guide-surface {
-      padding: 0.875rem 1rem;
-      font-size: 0.84rem;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .account-table th,
-    .account-table td {
-      vertical-align: middle;
-    }
-
-    .account-table {
-      width: 100%;
-      table-layout: fixed;
-    }
-
-    .account-name-cell {
-      max-width: 260px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .account-summary-cell {
-      max-width: 520px;
-    }
-
-    .account-expiration-cell {
-      color: var(--muted);
-      font-size: 0.88rem;
-      white-space: nowrap;
-    }
-
-    .account-summary-line {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .account-summary-text {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .account-actions {
-      white-space: nowrap;
-    }
-
-    .desktop-table {
-      display: block;
-    }
-
-    .mobile-card-list {
-      display: none;
-    }
-
-    .mobile-card {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: #fff;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.05);
-      padding: 1rem;
-    }
-
-    .mobile-card.active {
-      border-color: rgba(0, 113, 227, 0.36);
-      box-shadow: 0 12px 28px rgba(0, 113, 227, 0.12);
-      background: rgba(0, 113, 227, 0.045);
-    }
-
-    .mobile-card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem 0.75rem;
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    .mobile-card-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
-    .mobile-card-actions .btn {
-      flex: 1 1 calc(50% - 0.25rem);
-    }
-
-    .log-collapsed-hint {
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-
-    .create-vm-action-row {
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .create-vm-btn {
-      min-width: 8rem;
-    }
-
-    .startup-script-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-
-    .startup-script-status {
-      color: var(--muted);
-      font-size: 0.84rem;
-    }
-
-    .startup-script-status[data-state="dirty"] {
-      color: var(--amber);
-    }
-
-    .startup-script-status[data-state="saving"] {
-      color: var(--blue);
-    }
-
-    .startup-script-status[data-state="error"] {
-      color: var(--red);
-    }
-
-    .modal-content {
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .modal-header,
-    .modal-footer {
-      border-color: var(--line);
-    }
-
-    @media (max-width: 1100px) {
-      .overview {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 767.98px) {
-      .shell {
-        width: min(100% - 20px, 1440px);
-        padding-top: 10px;
-      }
-
-      .topbar {
-        position: static;
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
-      .topbar-actions,
-      .panel-header,
-      .panel-actions {
-        width: 100%;
-        align-items: stretch;
-      }
-
-      .panel-header {
-        flex-direction: column;
-      }
-
-      .topbar-actions .btn,
-      .panel-actions .btn,
-      .context-chip,
-      .account-inline-hint {
-        width: 100%;
-      }
-
-      .overview-copy {
-        min-height: 0;
-      }
-
-      .page-title {
-        font-size: 1.65rem;
-      }
-
-      .metric-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .metric-tile {
-        min-height: 132px;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .metric-tile:nth-child(odd) {
-        border-right: 1px solid var(--line);
-      }
-
-      .metric-tile:nth-last-child(-n + 2) {
-        border-bottom: 0;
-      }
-
-      .metric-value {
-        font-size: 2rem;
-      }
-
-      .desktop-table {
-        display: none;
-      }
-
-      .mobile-card-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      .create-vm-action-row {
-        display: block;
-      }
-
-      .create-vm-btn {
-        width: 100%;
-      }
-
-      .startup-script-toolbar {
-        align-items: stretch;
-      }
-    }
+      --bg: #faf9f5; --bg2: #f0eee8; --bg3: #e8e5de;
+      --border: #e3e1db; --text: #2d2a26; --text2: #6d6760;
+      --primary: #8b8680; --primary-hover: #7f7a74;
+      --success: #10b981; --error: #c65746; --warning: #f59e0b;
+      --sidebar-w: 240px; --radius: 8px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+    /* login */
+    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px; width: 360px; }
+    .login-card h1 { font-size: 20px; margin-bottom: 8px; }
+    .login-card p { color: var(--text2); margin-bottom: 24px; font-size: 13px; }
+
+    /* layout */
+    #app { display: none; }
+    .layout { display: flex; min-height: 100vh; }
+
+    /* sidebar */
+    .sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto; }
+    .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
+    .sidebar-header h2 { font-size: 15px; font-weight: 600; }
+    .sidebar-header p { font-size: 12px; color: var(--text2); margin-top: 2px; }
+    .sidebar-section { padding: 12px 8px; border-bottom: 1px solid var(--border); flex: 1; overflow-y: auto; }
+    .sidebar-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 8px; margin-bottom: 4px; }
+    .account-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; cursor: pointer; transition: background 0.15s; font-size: 13px; }
+    .account-item:hover { background: var(--bg3); }
+    .account-item.active { background: var(--bg3); font-weight: 500; }
+    .account-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+    .account-dot.ok { background: var(--success); }
+    .sidebar-footer { padding: 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+
+    /* main */
+    .main { margin-left: var(--sidebar-w); flex: 1; padding: 24px; }
+    .main-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .main-header h1 { font-size: 18px; font-weight: 600; }
+
+    /* tabs */
+    .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tab { padding: 8px 16px; cursor: pointer; color: var(--text2); font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 500; }
+
+    /* table */
+    .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg3); border-bottom: 1px solid var(--border); }
+    td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(0,0,0,0.015); }
+
+    /* badges */
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-error { background: #fee2e2; color: #991b1b; }
+    .badge-running { background: #dbeafe; color: #1e40af; }
+    .badge-info { background: var(--bg3); color: var(--text2); }
+
+    /* buttons */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: inherit; white-space: nowrap; line-height: 1; }
+    .btn:hover { background: var(--bg3); }
+    .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+    .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+    .btn-danger { color: var(--error); border-color: #fca5a5; }
+    .btn-danger:hover { background: #fee2e2; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+
+    /* forms */
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; transition: border-color 0.15s; outline: none; }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 80px; }
+    .form-hint { font-size: 12px; color: var(--text2); margin-top: 4px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.25); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; }
+    .modal { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+    .modal-lg { max-width: 560px; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .modal-header h3 { font-size: 15px; font-weight: 600; }
+    .modal-body { padding: 20px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--border); }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text2); padding: 2px 6px; line-height: 1; border-radius: 4px; }
+    .modal-close:hover { background: var(--bg3); }
+
+    /* toast */
+    #toast-container { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-width: 320px; animation: toast-in 0.2s ease; pointer-events: auto; }
+    .toast-success { border-left: 3px solid var(--success); }
+    .toast-error { border-left: 3px solid var(--error); }
+    @keyframes toast-in { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* task log */
+    .log-list { display: flex; flex-direction: column; gap: 3px; }
+    .log-item { display: grid; grid-template-columns: 60px 90px 1fr; gap: 8px; font-size: 12px; font-family: monospace; padding: 5px 8px; border-radius: 4px; background: var(--bg2); }
+    .log-item.error { background: #fee2e2; }
+    .log-time { color: var(--text2); }
+    .log-step { color: var(--primary); }
+
+    /* misc */
+    .empty { text-align: center; padding: 48px 24px; color: var(--text2); font-size: 13px; }
+    .no-account { display: flex; align-items: center; justify-content: center; min-height: 300px; color: var(--text2); font-size: 14px; }
+    .check-result { padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; }
+    .check-result.ok { background: #d1fae5; color: #065f46; }
+    .check-result.fail { background: #fee2e2; color: #991b1b; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand-lockup">
-        <div class="brand-mark">A</div>
-        <div class="min-w-0">
-          <h1 class="brand-title">Azure Manager</h1>
-          <p class="brand-subtitle">Cloudflare Worker control panel</p>
-        </div>
-      </div>
-      <div class="topbar-actions">
-        <div class="status-pill"><span class="status-dot"></span>Worker online</div>
-        <button id="logoutBtn" class="btn btn-outline-danger" type="button">
-          <i data-lucide="log-out"></i>
-          登出
-        </button>
-      </div>
-    </header>
 
-    <main id="loginShell" class="login-shell">
-      <div class="login-panel" id="loginPanel">
-        <div class="card-body">
-          <div class="section-title">登录</div>
-          <h2 class="h4 mb-3">管理员登录</h2>
-          <form id="loginForm">
-            <div class="mb-3">
-              <label for="password" class="form-label">密码</label>
-              <input id="password" type="password" class="form-control" autocomplete="current-password" required>
+<div id="toast-container"></div>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>Azure Manager</h1>
+    <p>输入访问密码登录</p>
+    <div class="form-group">
+      <label for="login-password">密码</label>
+      <input type="password" id="login-password" placeholder="访问密码" autocomplete="current-password" />
+    </div>
+    <button class="btn btn-primary" style="width:100%" id="login-btn">登录</button>
+    <div id="login-error" class="hidden" style="margin-top:12px;color:var(--error);font-size:13px;"></div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Azure Manager</h2>
+        <p id="sidebar-subtitle">加载中...</p>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Azure 账户</div>
+        <div id="account-list"></div>
+      </div>
+      <div class="sidebar-footer">
+        <button class="btn btn-sm" id="btn-add-account">+ 添加账户</button>
+        <button class="btn btn-sm" id="btn-logout">退出登录</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="view-no-account">
+        <div class="main-header"><h1>Azure Manager</h1></div>
+        <div class="no-account">请从左侧选择一个 Azure 账户</div>
+      </div>
+
+      <div id="view-account" class="hidden">
+        <div class="main-header">
+          <h1 id="account-title">-</h1>
+          <div class="btn-group">
+            <button class="btn btn-sm" id="btn-refresh">刷新</button>
+            <button class="btn btn-sm" id="btn-create-vm">创建虚拟机</button>
+            <button class="btn btn-sm" id="btn-edit-account">编辑</button>
+            <button class="btn btn-sm btn-danger" id="btn-delete-account">删除账户</button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="vms">虚拟机</div>
+          <div class="tab" data-tab="tasks">任务</div>
+          <div class="tab" data-tab="settings">设置</div>
+        </div>
+
+        <div id="tab-vms">
+          <div class="table-wrap">
+            <table><thead><tr><th>名称</th><th>资源组</th><th>区域</th><th>大小</th><th>状态</th><th>公网 IP</th><th>操作</th></tr></thead>
+            <tbody id="vm-tbody"></tbody></table>
+          </div>
+        </div>
+
+        <div id="tab-tasks" class="hidden">
+          <div id="task-list"></div>
+        </div>
+
+        <div id="tab-settings" class="hidden">
+          <div style="max-width:600px">
+            <div class="form-group">
+              <label>全局开机脚本（User Data）</label>
+              <textarea id="startup-script" rows="12" style="font-family:monospace;font-size:12px"></textarea>
+              <div class="form-hint">创建虚拟机时默认使用此脚本，可在创建时覆盖</div>
             </div>
-            <button class="btn btn-primary w-100" type="submit">
-              <i data-lucide="arrow-right"></i>
-              登录
-            </button>
-          </form>
+            <button class="btn btn-primary" id="btn-save-script">保存脚本</button>
+          </div>
         </div>
       </div>
     </main>
-
-    <main id="appShell" class="app-hidden">
-      <section class="overview">
-        <div class="overview-copy">
-          <div>
-            <div class="eyebrow">控制台</div>
-            <h2 class="page-title">管理 Azure 测试实例。</h2>
-            <p class="page-copy">账户、区域、虚拟机和任务日志集中在一个页面里；先选择账户，再执行创建或生命周期操作。</p>
-          </div>
-          <div id="accountSelectionContext" class="context-chip mt-3" data-empty="true">当前账户：未选择</div>
-        </div>
-        <div class="metric-grid" aria-label="资源概览">
-          <div class="metric-tile">
-            <div class="metric-label">账户</div>
-            <div id="accountCountStat" class="metric-value">0</div>
-            <div class="metric-note">已保存凭据</div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">虚拟机</div>
-            <div id="vmCountStat" class="metric-value">--</div>
-            <div class="metric-note">当前账户资源</div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">运行中</div>
-            <div id="runningVmCountStat" class="metric-value">--</div>
-            <div class="metric-note">可执行停止/重启</div>
-          </div>
-          <div class="metric-tile">
-            <div class="metric-label">区域</div>
-            <div id="regionCountStat" class="metric-value">--</div>
-            <div class="metric-note">可创建位置</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel mb-4">
-        <div class="card-body p-0">
-          <div class="panel-header">
-            <div>
-              <div class="section-title mb-1">账户</div>
-              <h3 class="panel-title">Azure 账户</h3>
-              <p class="panel-subtitle">选择一个账户后读取区域和虚拟机列表。</p>
-            </div>
-            <div class="panel-actions">
-              <button id="addAccountBtn" class="btn btn-primary" type="button">
-                <i data-lucide="plus"></i>
-                添加账户
-              </button>
-              <button id="queryAllStatusBtn" class="btn btn-outline-primary" type="button">
-                <i data-lucide="activity"></i>
-                检查全部
-              </button>
-            </div>
-          </div>
-          <div class="table-responsive desktop-table">
-            <table class="table table-striped table-hover mb-0 account-table">
-              <colgroup>
-                <col style="width: 22%">
-                <col style="width: 36%">
-                <col style="width: 12%">
-                <col style="width: 30%">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>账户名称</th>
-                  <th>订阅信息</th>
-                  <th>到期日期</th>
-                  <th class="text-center">操作</th>
-                </tr>
-              </thead>
-              <tbody id="accountList"></tbody>
-            </table>
-          </div>
-          <div id="accountMobileList" class="mobile-card-list p-3"></div>
-        </div>
-      </section>
-
-      <section class="panel mb-4">
-        <div class="card-body p-0">
-          <div class="panel-header">
-            <div>
-              <div class="section-title mb-1">虚拟机列表</div>
-              <h3 class="panel-title">实例</h3>
-              <p class="panel-subtitle">选择一台实例后执行启动、停止、更换 IP 或删除资源组。</p>
-            </div>
-            <div class="panel-actions">
-              <button id="refreshVms" class="btn btn-sm btn-outline-primary" type="button" disabled>
-                <i data-lucide="refresh-cw"></i>
-                刷新
-              </button>
-            </div>
-          </div>
-          <div class="table-responsive desktop-table">
-            <table class="table table-hover mb-0">
-              <thead>
-                <tr>
-                  <th>名称</th>
-                  <th>资源组</th>
-                  <th>区域</th>
-                  <th>实例类型</th>
-                  <th>运行时间</th>
-                  <th>公网 IP</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody id="vmList"></tbody>
-            </table>
-          </div>
-          <div id="vmMobileList" class="mobile-card-list p-3 pt-0"></div>
-          <div class="px-4 py-3 border-top action-bar justify-content-center">
-            <button type="button" id="startBtn" class="btn btn-secondary" disabled>
-              <i data-lucide="play"></i>
-              启动
-            </button>
-            <button type="button" id="stopBtn" class="btn btn-secondary" disabled>
-              <i data-lucide="square"></i>
-              停止
-            </button>
-            <button type="button" id="restartBtn" class="btn btn-secondary" disabled>
-              <i data-lucide="rotate-cw"></i>
-              重启
-            </button>
-            <button type="button" id="changeIpBtn" class="btn btn-secondary" disabled>
-              <i data-lucide="shuffle"></i>
-              更换 IP
-            </button>
-            <button type="button" id="deleteBtn" class="btn btn-secondary" disabled>
-              <i data-lucide="trash-2"></i>
-              删除资源组
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel mb-4">
-        <div class="panel-body">
-          <div class="section-title mb-1">创建实例</div>
-          <h3 class="panel-title mb-3">新建虚拟机</h3>
-          <div class="row g-3 align-items-center mb-3">
-            <div class="col-lg-2">
-              <label class="form-label mb-lg-0">选择区域</label>
-            </div>
-            <div class="col-lg-4">
-              <input type="search" id="regionSearch" class="form-control" placeholder="搜索区域，例如 japan / eastus" disabled>
-            </div>
-            <div class="col-lg-6">
-              <select class="form-select" id="regionSelector" disabled>
-                <option>请先选择账户</option>
-              </select>
-            </div>
-          </div>
-          <details id="userDataDetails">
-            <summary class="small text-secondary mb-3">编辑开机脚本 (全局默认)</summary>
-            <textarea id="userData" class="form-control" rows="10"></textarea>
-            <div class="startup-script-toolbar mt-3">
-              <div id="userDataSaveStatus" class="startup-script-status" data-state="saved">登录后自动加载默认脚本</div>
-              <button id="saveUserDataBtn" class="btn btn-outline-primary btn-sm" type="button">保存脚本</button>
-            </div>
-          </details>
-          <div class="mt-3 create-vm-action-row">
-            <button id="createVmBtn" class="btn btn-primary create-vm-btn" type="button" disabled>
-              <i data-lucide="server"></i>
-              创建实例
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-body">
-          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-              <div class="section-title mb-1">任务日志</div>
-              <h3 class="panel-title">操作记录</h3>
-            </div>
-            <div class="button-row">
-              <button id="toggleLogBtn" class="btn btn-sm btn-outline-secondary" type="button">
-                <i data-lucide="panel-bottom-open"></i>
-                展开
-              </button>
-              <button id="clearLogBtn" class="btn btn-sm btn-outline-danger" type="button">
-                <i data-lucide="eraser"></i>
-                清除
-              </button>
-            </div>
-          </div>
-          <div id="logCollapsedHint" class="log-collapsed-hint app-hidden">暂无任务日志，执行写操作或发生错误时会自动展开。</div>
-          <div id="logPanelContent" class="mt-3">
-            <pre id="logOutput" class="log-surface form-control mb-0"></pre>
-          </div>
-        </div>
-      </section>
-    </main>
   </div>
+</div>
 
-  <div class="modal fade" id="createVmModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">创建新的虚拟机</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form id="createVmForm">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label">已选区域</label>
-                <input type="text" id="vmRegionDisplay" class="form-control" readonly>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label">实例类型</label>
-                <select id="vmSize" class="form-select" required>
-                  <option value="Standard_B1s">B1s (1 vCPU, 1 GB RAM)</option>
-                  <option value="Standard_B1ms">B1ms (1 vCPU, 2 GB RAM)</option>
-                  <option value="Standard_B2s">B2s (2 vCPU, 4 GB RAM)</option>
-                  <option value="Standard_D2s_v3">D2s v3 (2 vCPU, 8 GB RAM)</option>
-                  <option value="Standard_F2s_v2">F2s v2 (2 vCPU, 4 GB RAM)</option>
-                </select>
-              </div>
-            </div>
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label class="form-label">操作系统</label>
-                <select id="vmOs" class="form-select" required>
-                  <option value="debian12" selected>Debian 12</option>
-                  <option value="debian11">Debian 11</option>
-                  <option value="ubuntu22">Ubuntu 22.04 LTS</option>
-                  <option value="ubuntu20">Ubuntu 20.04 LTS</option>
-                </select>
-              </div>
-              <div class="col-md-6 mb-3">
-                <label class="form-label">硬盘大小 (GB)</label>
-                <select id="vmDiskSize" class="form-select" required>
-                  <option value="30">30 GB</option>
-                  <option value="64" selected>64 GB</option>
-                  <option value="128">128 GB</option>
-                </select>
-              </div>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">公网 IP 类型</label>
-              <select id="ipType" class="form-select">
-                <option value="Static">Static</option>
-                <option value="Dynamic">Dynamic</option>
-              </select>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-          <button type="button" id="confirmCreateVmBtn" class="btn btn-primary">确认创建</button>
-        </div>
+<!-- Modal: 添加/编辑账户 -->
+<div id="modal-account" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-account-title">添加 Azure 账户</h3>
+      <button class="modal-close" data-close="modal-account">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="account-edit-id" />
+      <div class="form-group"><label>账户名称</label><input type="text" id="account-name" /></div>
+      <div id="account-creds">
+        <div class="form-group"><label>Client ID</label><input type="text" id="account-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
+        <div class="form-group"><label>Client Secret</label><input type="password" id="account-client-secret" /></div>
+        <div class="form-group"><label>Tenant ID</label><input type="text" id="account-tenant-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
+        <div class="form-group"><label>Subscription ID</label><input type="text" id="account-subscription-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></div>
       </div>
+      <div class="form-group"><label>过期日期（可选）</label><input type="date" id="account-expiration" /></div>
+      <div id="account-check-result" class="hidden check-result"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-account">取消</button>
+      <button class="btn" id="btn-check-creds" style="display:none">检查账户</button>
+      <button class="btn btn-primary" id="btn-save-account">保存</button>
     </div>
   </div>
+</div>
 
-  <div class="modal fade" id="addAccountModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">添加 Azure 账户</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <form id="addAccountForm">
-            <div class="mb-2">
-              <label class="form-label">账户名称</label>
-              <input type="text" id="accountName" class="form-control form-control-sm" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label">客户端 ID (appId)</label>
-              <input type="text" id="clientId" class="form-control form-control-sm" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label">客户端密码</label>
-              <input type="password" id="clientSecret" class="form-control form-control-sm" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label">租户 ID (tenantId)</label>
-              <input type="text" id="tenantId" class="form-control form-control-sm" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label">订阅 ID (subscriptionId)</label>
-              <input type="text" id="subscriptionId" class="form-control form-control-sm" required>
-            </div>
-            <div id="accountCheckResult" class="small text-secondary rounded border px-3 py-2 mt-3 mb-0">
-              请先点击“检查账户”。通过检查后才允许保存。
-            </div>
-          </form>
-          <details class="mt-3">
-            <summary class="small text-secondary">不知道这些值从哪里获取？展开查看 Azure CLI / Portal 指引</summary>
-            <div class="small text-secondary mt-3">
-              `subscriptionId` 和 `tenantId` 属于你自己的 Azure 订阅信息，不会也不应该从 GitHub 仓库里推断出来。
-            </div>
-            <div class="guide-surface mt-2"># 1) 登录 Azure
-az login
-
-# 2) 查看当前订阅和租户
-az account show --query "{subscriptionId:id, tenantId:tenantId, subscriptionName:name}" --output json
-
-# 3) 为当前订阅创建本项目使用的服务主体
-SUBSCRIPTION_ID="$(az account show --query id --output tsv)"
-az ad sp create-for-rbac \
-  --name "azure-panel-cf" \
-  --role "Contributor" \
-  --scopes "/subscriptions/$SUBSCRIPTION_ID"</div>
-            <div class="small text-secondary mt-2">
-              命令返回的 `appId` 填到“客户端 ID”，`password` 填到“客户端密码”，`tenant` 填到“租户 ID”；`subscriptionId` 则来自 `az account show` 或 Azure Portal 的 Subscriptions 页面。
-            </div>
-          </details>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-primary" id="checkAccountBtn">检查账户</button>
-          <button type="submit" class="btn btn-primary" id="saveAccountBtn" form="addAccountForm" disabled>检查通过后保存账户</button>
+<!-- Modal: 创建 VM -->
+<div id="modal-create-vm" class="modal-overlay hidden">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>创建虚拟机</h3>
+      <button class="modal-close" data-close="modal-create-vm">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>区域</label><select id="create-region"><option value="">加载中...</option></select></div>
+        <div class="form-group"><label>实例类型</label>
+          <select id="create-vm-size">
+            <option value="Standard_B1s">Standard_B1s (1vCPU / 1GB)</option>
+            <option value="Standard_B1ms">Standard_B1ms (1vCPU / 2GB)</option>
+            <option value="Standard_B2s">Standard_B2s (2vCPU / 4GB)</option>
+            <option value="Standard_B2ms">Standard_B2ms (2vCPU / 8GB)</option>
+            <option value="Standard_D2s_v3">Standard_D2s_v3 (2vCPU / 8GB)</option>
+          </select>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div class="modal fade" id="editAccountModal" tabindex="-1">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">修改账户信息</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      <div class="form-row">
+        <div class="form-group"><label>操作系统</label>
+          <select id="create-os">
+            <option value="debian12">Debian 12</option>
+            <option value="debian11">Debian 11</option>
+            <option value="ubuntu22">Ubuntu 22.04</option>
+            <option value="ubuntu20">Ubuntu 20.04</option>
+          </select>
         </div>
-        <div class="modal-body">
-          <form id="editAccountForm">
-            <input type="hidden" id="editAccountId">
-            <div class="mb-3">
-              <label class="form-label">账户名称</label>
-              <input type="text" class="form-control" id="editAccountName" required>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">到期日期 (可选)</label>
-              <input type="date" class="form-control" id="editExpirationDate">
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-          <button type="button" id="confirmEditAccountBtn" class="btn btn-primary">保存更改</button>
-        </div>
+        <div class="form-group"><label>磁盘大小 (GB)</label><input type="number" id="create-disk" value="30" min="30" max="1024" /></div>
+      </div>
+      <div class="form-group"><label>公网 IP 类型</label>
+        <select id="create-ip-type"><option value="Static">静态 (Static)</option><option value="Dynamic">动态 (Dynamic)</option></select>
+      </div>
+      <div class="form-group">
+        <label>开机脚本（留空使用全局默认）</label>
+        <textarea id="create-userdata" rows="5" style="font-family:monospace;font-size:12px" placeholder="#!/bin/bash"></textarea>
       </div>
     </div>
-  </div>
-
-  <div class="modal fade" id="vmActionModal" tabindex="-1">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 id="vmActionModalTitle" class="modal-title">确认操作</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div id="vmActionModalMessage" class="mb-3 text-body"></div>
-          <div class="small text-secondary">
-            <div><span id="vmActionPrimaryLabel">虚拟机</span>：<span id="vmActionVmName" class="fw-semibold text-body"></span></div>
-            <div id="vmActionSecondaryRow"><span id="vmActionSecondaryLabel">资源组</span>：<span id="vmActionResourceGroup" class="fw-semibold text-body"></span></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-          <button type="button" id="confirmVmActionBtn" class="btn btn-primary">确认执行</button>
-        </div>
-      </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-create-vm">取消</button>
+      <button class="btn btn-primary" id="btn-submit-create-vm">创建</button>
     </div>
   </div>
+</div>
 
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
-  <script src="./app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Modal: VM 操作确认 -->
+<div id="modal-confirm" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="confirm-title">确认操作</h3>
+      <button class="modal-close" data-close="modal-confirm">×</button>
+    </div>
+    <div class="modal-body"><p id="confirm-desc" style="font-size:14px;line-height:1.6"></p></div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-confirm">取消</button>
+      <button class="btn btn-primary" id="btn-confirm">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: 任务详情 -->
+<div id="modal-task" class="modal-overlay hidden">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>任务详情</h3>
+      <button class="modal-close" data-close="modal-task">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="task-info" style="margin-bottom:16px"></div>
+      <div class="log-list" id="task-logs"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
 </body>
 </html>
