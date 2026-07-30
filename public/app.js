@@ -74,7 +74,7 @@ async function copyText(text) {
 window.copyText = copyText;
 
 // ── page navigation ───────────────────────────────────────────
-const PAGES = ['overview', 'accounts', 'settings', 'help'];
+const PAGES = ['overview', 'accounts', 'settings'];
 
 function switchPage(page) {
   S.activePage = page;
@@ -89,8 +89,22 @@ function switchPage(page) {
 }
 window.switchPage = switchPage;
 
-document.querySelectorAll('.nav-btn[data-page]').forEach(el => {
+document.querySelectorAll('.ni[data-page]').forEach(el => {
   el.addEventListener('click', () => switchPage(el.dataset.page));
+});
+
+$('sbtoggle').addEventListener('click', () => {
+  $('sidebar').classList.toggle('col');
+});
+
+function openAzureGuide() {
+  openModal('mo-azure-guide');
+}
+window.openAzureGuide = openAzureGuide;
+
+$('btn-guide-to-add').addEventListener('click', () => {
+  closeModal('mo-azure-guide');
+  openAddAccount();
 });
 
 // ── overview ──────────────────────────────────────────────────
@@ -129,7 +143,10 @@ function renderAccGrid() {
       <div class="empty" style="grid-column:1/-1">
         <h3>还没有 Azure 账户</h3>
         <p>添加应用注册凭据后，即可管理该订阅下的虚拟机。</p>
-        <button class="btn btn-p" style="margin-top:8px" onclick="openAddAccount()">添加账户</button>
+        <div class="bgrp" style="margin-top:8px;justify-content:center">
+          <button class="btn btn-s" onclick="openAzureGuide()">如何获取凭据？</button>
+          <button class="btn btn-p" onclick="openAddAccount()">添加账户</button>
+        </div>
       </div>`;
     return;
   }
@@ -465,11 +482,128 @@ $('btn-refresh-vms').addEventListener('click', async () => {
 });
 
 // ── add account ───────────────────────────────────────────────
+function setAddMode(mode) {
+  const isJson = mode === 'json';
+  $('add-tab-manual').classList.toggle('active', !isJson);
+  $('add-tab-json').classList.toggle('active', isJson);
+  $('add-mode-manual').classList.toggle('hidden', isJson);
+  $('add-mode-json').classList.toggle('hidden', !isJson);
+}
+
+document.querySelectorAll('[data-add-mode]').forEach(tab => {
+  tab.addEventListener('click', () => setAddMode(tab.dataset.addMode));
+});
+
 function resetAddForm() {
-  ['add-name', 'add-cid', 'add-tid', 'add-sec', 'add-sid'].forEach(id => { $(id).value = ''; });
+  ['add-name', 'add-cid', 'add-tid', 'add-sec', 'add-sid', 'add-json'].forEach(id => { $(id).value = ''; });
   $('add-exp').value = '';
   $('add-check-result').className = 'hidden';
   $('add-check-result').textContent = '';
+  $('add-json-result').className = 'hidden';
+  $('add-json-result').textContent = '';
+  setAddMode('manual');
+}
+
+function pickCredentialField(obj, keys) {
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function extractSubscriptionId(text, obj) {
+  // Prefer explicit keys only — never generic `id`, which can collide with other Azure objects.
+  const fromObj = pickCredentialField(obj, [
+    'subscriptionId', 'subscription_id', 'subscriptionID', 'subId', 'sub_id',
+  ]);
+  if (fromObj) return fromObj;
+
+  // Also parse trailing lines like: subscriptionId=xxxx
+  const patterns = [
+    /subscriptionId\s*[:=]\s*["']?([0-9a-fA-F-]{36})/i,
+    /subscription_id\s*[:=]\s*["']?([0-9a-fA-F-]{36})/i,
+    /订阅\s*ID\s*[:=]\s*["']?([0-9a-fA-F-]{36})/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) return m[1];
+  }
+  return '';
+}
+
+function parseCredentialPayload(raw) {
+  const text = String(raw || '').trim();
+  if (!text) throw new Error('请先粘贴 JSON 或 Cloud Shell 输出');
+
+  // Extract the first JSON object even if extra lines follow (e.g. subscriptionId=...).
+  let obj = null;
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      obj = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      // fall through
+    }
+  }
+  if (!obj) {
+    try {
+      obj = JSON.parse(text);
+    } catch {
+      throw new Error('无法解析 JSON，请检查是否完整复制了 Cloud Shell 输出');
+    }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('JSON 格式不正确，需要包含 appId / password / tenant 的对象');
+  }
+
+  const clientId = pickCredentialField(obj, ['appId', 'app_id', 'clientId', 'client_id', 'applicationId', 'application_id']);
+  const clientSecret = pickCredentialField(obj, ['password', 'clientSecret', 'client_secret', 'secret', 'clientSecretValue']);
+  const tenantId = pickCredentialField(obj, ['tenant', 'tenantId', 'tenant_id', 'directoryId', 'directory_id']);
+  const subscriptionId = extractSubscriptionId(text, obj);
+  const name = pickCredentialField(obj, ['displayName', 'display_name', 'name', 'accountName', 'account_name']);
+
+  if (!clientId || !clientSecret || !tenantId) {
+    throw new Error('JSON 中至少需要 appId、password、tenant（或 clientId/clientSecret/tenantId）');
+  }
+
+  return { name, clientId, clientSecret, tenantId, subscriptionId };
+}
+
+function applyParsedCredentials(parsed, { silent = false } = {}) {
+  if (parsed.name && !$('add-name').value.trim()) $('add-name').value = parsed.name;
+  else if (parsed.name) $('add-name').value = parsed.name;
+  $('add-cid').value = parsed.clientId || '';
+  $('add-sec').value = parsed.clientSecret || '';
+  $('add-tid').value = parsed.tenantId || '';
+  if (parsed.subscriptionId) $('add-sid').value = parsed.subscriptionId;
+
+  const res = $('add-json-result');
+  const missingSub = !parsed.subscriptionId;
+  res.className = missingSub ? 'err-box' : 'ok-box';
+  res.textContent = missingSub
+    ? '已填充 appId / password / tenant。未检测到 subscriptionId，请手动补全订阅 ID。'
+    : '已解析并填充表单字段，可直接验证或保存。';
+  res.classList.remove('hidden');
+
+  if (!silent) {
+    setAddMode('manual');
+    toast(missingSub ? '已填充，请补全订阅 ID' : 'JSON 已填充到表单', missingSub ? 'info' : 'success');
+  }
+  return !missingSub;
+}
+
+function ensureCredentialsFromJsonIfNeeded() {
+  // If user stays on JSON tab, parse automatically before check/save.
+  const onJson = !$('add-mode-json').classList.contains('hidden');
+  if (!onJson) return;
+  const raw = $('add-json').value.trim();
+  if (!raw) return;
+  const parsed = parseCredentialPayload(raw);
+  applyParsedCredentials(parsed, { silent: true });
 }
 
 function openAddAccount() {
@@ -479,12 +613,26 @@ function openAddAccount() {
 }
 window.openAddAccount = openAddAccount;
 
+$('btn-parse-json').addEventListener('click', () => {
+  try {
+    const parsed = parseCredentialPayload($('add-json').value);
+    applyParsedCredentials(parsed);
+  } catch (e) {
+    const res = $('add-json-result');
+    res.className = 'err-box';
+    res.textContent = e.message;
+    res.classList.remove('hidden');
+    toast(e.message, 'error');
+  }
+});
+
 $('btn-check-add').addEventListener('click', async () => {
   const btn = $('btn-check-add');
   const res = $('add-check-result');
   btn.disabled = true;
   btn.textContent = '验证中...';
   try {
+    ensureCredentialsFromJsonIfNeeded();
     const d = await api('POST', '/api/accounts/check', {
       clientId: $('add-cid').value.trim(),
       clientSecret: $('add-sec').value.trim(),
@@ -507,8 +655,10 @@ $('btn-save-add').addEventListener('click', async () => {
   const btn = $('btn-save-add');
   btn.disabled = true;
   try {
+    ensureCredentialsFromJsonIfNeeded();
+    const name = $('add-name').value.trim() || $('add-cid').value.trim().slice(0, 8) || 'Azure Account';
     await api('POST', '/api/accounts', {
-      name: $('add-name').value.trim(),
+      name,
       clientId: $('add-cid').value.trim(),
       clientSecret: $('add-sec').value.trim(),
       tenantId: $('add-tid').value.trim(),
