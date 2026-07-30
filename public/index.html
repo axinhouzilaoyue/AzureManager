@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,751 +8,813 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #faf9f5;
-      --bg2:       #f0eee8;
-      --bg3:       #e9e6df;
-      --float-bg:  #fffdf9;
-      --float-bd:  #d8d3ca;
-      --float-sh:  0 12px 26px rgba(0,0,0,0.14);
-      --tx:        #2d2a26;
-      --tx2:       #6d6760;
-      --tx3:       #a29c95;
-      --bd:        #e3e1db;
-      --bd2:       #d5d2cb;
-      --bd3:       #cecac4;
-      --pr:        #8b8680;
-      --pr2:       #7f7a74;
-      --pr3:       #726d67;
-      --ok:        #10b981;
-      --err:       #c65746;
-      --sh:        0 1px 2px rgba(0,0,0,0.08);
-      --sh2:       0 4px 12px rgba(0,0,0,0.1);
-      --r:         8px;
-      --rl:        12px;
-      --sw:        228px;
-      --scw:       60px;
-      --t:         200ms ease;
+      --bg: #0b1220;
+      --bg-elev: #111a2e;
+      --bg-soft: #162038;
+      --bg-hover: #1c2944;
+      --line: rgba(148, 163, 184, 0.14);
+      --line-strong: rgba(148, 163, 184, 0.24);
+      --text: #e8eefc;
+      --text-2: #9aa8c7;
+      --text-3: #6b7a99;
+      --brand: #3b82f6;
+      --brand-2: #2563eb;
+      --brand-soft: rgba(59, 130, 246, 0.14);
+      --ok: #34d399;
+      --ok-soft: rgba(52, 211, 153, 0.14);
+      --warn: #fbbf24;
+      --err: #f87171;
+      --err-soft: rgba(248, 113, 113, 0.14);
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      --r: 12px;
+      --r-sm: 8px;
+      --r-lg: 18px;
+      --font: "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      --t: 160ms ease;
     }
 
     html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
-      background: var(--bg); color: var(--tx);
-      font-size: 14px; line-height: 1.5;
+      font-family: var(--font);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(59,130,246,0.18), transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, rgba(14,165,233,0.12), transparent 50%),
+        var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Login ────────────────────────────────────── */
-    #login-screen { display: flex; min-height: 100vh; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--brand); text-decoration: none; }
+    code, .mono { font-family: var(--mono); font-size: 12px; }
+    .hidden { display: none !important; }
+    .muted { color: var(--text-2); }
+    .small { font-size: 12px; }
 
-    .login-brand {
-      flex: 1;
-      background: #000;
-      display: flex; flex-direction: column;
-      justify-content: flex-end;
-      padding: 52px 56px;
-      overflow: hidden;
-    }
-    @media (max-width: 720px) { .login-brand { display: none; } }
-
-    .brand-word {
-      font-size: 11vw; font-weight: 900;
-      letter-spacing: -0.03em; line-height: 0.88;
-      text-transform: uppercase;
-      opacity: 0; animation: bIn 0.65s ease-out forwards;
-      user-select: none;
-    }
-    .brand-word:nth-child(1) { color: rgba(255,255,255,0.9);  animation-delay: 0.06s; }
-    .brand-word:nth-child(2) { color: rgba(255,255,255,0.52); animation-delay: 0.24s; }
-    @keyframes bIn { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:none } }
-    .brand-sub { margin-top: 22px; font-size: 12px; color: rgba(255,255,255,0.25); letter-spacing: 0.1em; text-transform: uppercase; }
-
-    .login-panel {
-      flex: 1;
-      display: flex; flex-direction: column;
-      justify-content: center; align-items: center;
-      padding: 48px 40px;
-      background: var(--bg);
-    }
-    @media (max-width: 720px) { .login-panel { flex: unset; width: 100%; } }
-
-    .login-inner { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 28px; }
-
-    .login-logo { width: 46px; height: 46px; background: var(--pr); border-radius: var(--r); display: flex; align-items: center; justify-content: center; }
-    .login-logo svg { color: #fff; }
-    .login-h1   { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin-top: 10px; }
-    .login-sub  { font-size: 13px; color: var(--tx2); margin-top: 3px; }
-
-    .login-card {
-      background: var(--bg2); border: 1px solid var(--bd);
-      border-radius: var(--rl); box-shadow: var(--sh2);
-      padding: 28px; display: flex; flex-direction: column; gap: 16px;
-    }
-
-    /* ── Forms ────────────────────────────────────── */
-    .fg   { display: flex; flex-direction: column; gap: 6px; }
-    .fl   { font-size: 13px; font-weight: 600; }
-    .fi   {
-      width: 100%; padding: 10px 12px;
-      border: 1px solid var(--bd); border-radius: var(--r);
-      background: var(--bg); color: var(--tx);
-      font-size: 13px; font-family: inherit;
-      transition: border-color var(--t), box-shadow var(--t); outline: none;
-    }
-    .fi:focus { border-color: var(--pr); box-shadow: 0 0 0 3px rgba(139,134,128,0.18); }
-    .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    @media (max-width: 560px) { .frow { grid-template-columns: 1fr; } }
-    .fhint { font-size: 12px; color: var(--tx2); }
-    textarea.fi { resize: vertical; min-height: 80px; }
-    select.fi   { cursor: pointer; }
-
-    .err-box {
-      background: rgba(198,87,70,0.1); border: 1px solid rgba(198,87,70,0.4);
-      border-radius: var(--r); padding: 10px 14px;
-      color: var(--err); font-size: 13px;
-    }
-    .ok-box {
-      background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);
-      border-radius: var(--r); padding: 10px 14px;
-      color: #065f46; font-size: 13px;
-    }
-
-    /* ── Buttons ──────────────────────────────────── */
+    /* ── Buttons ─────────────────────────────────── */
     .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 6px; border: 1px solid transparent; border-radius: var(--r);
-      padding: 9px 16px; font-size: 13px; font-weight: 600; font-family: inherit;
-      cursor: pointer; white-space: nowrap; line-height: 1;
-      transition: all var(--t);
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      height: 36px; padding: 0 14px; border-radius: 10px;
+      border: 1px solid transparent; background: transparent;
+      font-size: 13px; font-weight: 600; white-space: nowrap;
+      transition: background var(--t), border-color var(--t), transform var(--t), opacity var(--t);
     }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .btn-p  { background: var(--pr);  color: #fff; border-color: var(--pr); }
-    .btn-p:hover:not(:disabled)  { background: var(--pr2); border-color: var(--pr2); }
-    .btn-s  { background: var(--bg3); color: var(--tx); border-color: var(--bd); }
-    .btn-s:hover:not(:disabled)  { background: var(--bg3); border-color: var(--bd3); }
-    .btn-g  { background: transparent; color: var(--tx2); border-color: transparent; }
-    .btn-g:hover:not(:disabled)  { color: var(--tx); background: var(--bg3); }
-    .btn-d  { background: var(--err); color: #fff; border-color: var(--err); }
-    .btn-d:hover:not(:disabled)  { background: #b04d3e; }
-    .btn-dg { background: transparent; color: var(--err); border-color: rgba(198,87,70,0.35); }
-    .btn-dg:hover:not(:disabled) { background: rgba(198,87,70,0.08); }
-    .btn-sm { padding: 6px 10px; font-size: 12px; }
-    .btn-lg { padding: 11px 18px; font-size: 14px; }
-    .btn-w  { width: 100%; }
-    .bgrp   { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-p { background: linear-gradient(180deg, #4f8ff7, var(--brand-2)); color: #fff; box-shadow: 0 8px 20px rgba(37,99,235,0.28); }
+    .btn-p:hover:not(:disabled) { background: linear-gradient(180deg, #5b97f8, #1d4ed8); }
+    .btn-s { background: var(--bg-soft); border-color: var(--line); color: var(--text); }
+    .btn-s:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--line-strong); }
+    .btn-g { color: var(--text-2); }
+    .btn-g:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); }
+    .btn-d { background: #dc2626; color: #fff; }
+    .btn-d:hover:not(:disabled) { background: #b91c1c; }
+    .btn-dg { color: var(--err); border-color: rgba(248,113,113,0.28); background: var(--err-soft); }
+    .btn-dg:hover:not(:disabled) { background: rgba(248,113,113,0.22); }
+    .btn-sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+    .btn-lg { height: 42px; padding: 0 18px; font-size: 14px; }
+    .btn-w { width: 100%; }
+    .btn-ico { width: 36px; padding: 0; }
+    .btn-ico.btn-sm { width: 30px; }
+    .bgrp { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-    /* ── App ──────────────────────────────────────── */
-    #app      { display: none; height: 100vh; overflow: hidden; }
-    .app-body { display: flex; height: 100vh; overflow: hidden; }
-
-    /* ── Sidebar ──────────────────────────────────── */
-    .sidebar {
-      width: var(--sw); flex-shrink: 0;
-      height: 100vh; display: flex; flex-direction: column;
-      background: var(--bg2);
-      border-right: 1px solid color-mix(in srgb, var(--bd) 80%, transparent);
-      overflow: hidden;
-      transition: width var(--t);
-      position: relative; z-index: 10;
+    /* ── Forms ───────────────────────────────────── */
+    .fg { display: flex; flex-direction: column; gap: 7px; }
+    .fl {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+      font-size: 12px; font-weight: 650; color: var(--text);
     }
-    .sidebar.col { width: var(--scw); }
-
-    .sidebar-inner { flex: 1; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; }
-    .sidebar-inner::-webkit-scrollbar { display: none; }
-
-    /* toggle btn */
-    .sbtoggle {
-      position: absolute; top: 50%; right: -13px;
-      transform: translateY(-50%);
-      width: 26px; height: 26px;
-      background: var(--bg2); border: 1px solid var(--bd);
-      border-radius: 99px; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; z-index: 20; box-shadow: var(--sh); color: var(--tx2);
-      transition: background var(--t);
+    .fl-main { display: flex; flex-direction: column; gap: 2px; }
+    .fl-title { font-size: 13px; font-weight: 650; }
+    .fl-azure {
+      font-size: 11px; font-weight: 500; color: var(--text-3);
+      font-family: var(--mono);
     }
-    .sbtoggle:hover { background: var(--bg3); color: var(--tx); }
-    .sbtoggle svg   { width: 12px; height: 12px; transition: transform var(--t); }
-    .sidebar.col .sbtoggle svg { transform: rotate(180deg); }
-
-    /* brand */
-    .sb-brand {
-      display: flex; align-items: center; gap: 10px;
-      padding: 16px 14px; flex-shrink: 0;
-      border-bottom: 1px solid color-mix(in srgb, var(--bd) 60%, transparent);
+    .fi {
+      width: 100%; height: 40px; padding: 0 12px;
+      border-radius: 10px; border: 1px solid var(--line);
+      background: rgba(7, 12, 24, 0.55); color: var(--text);
+      outline: none; transition: border-color var(--t), box-shadow var(--t), background var(--t);
     }
-    .sb-logo {
-      width: 30px; height: 30px; flex-shrink: 0;
-      background: var(--pr); border-radius: var(--r);
-      display: flex; align-items: center; justify-content: center;
+    textarea.fi { height: auto; min-height: 96px; padding: 11px 12px; resize: vertical; line-height: 1.55; }
+    select.fi { cursor: pointer; }
+    .fi:focus {
+      border-color: rgba(59,130,246,0.7);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+      background: rgba(7, 12, 24, 0.8);
     }
-    .sb-logo svg  { color: #fff; }
-    .sb-name { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; }
+    .fi::placeholder { color: var(--text-3); }
+    .fhint { font-size: 12px; color: var(--text-3); line-height: 1.5; }
+    .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 720px) { .frow { grid-template-columns: 1fr; } }
 
-    /* nav section */
-    .sb-sec  { padding: 10px 8px; }
-    .sb-sec + .sb-sec { border-top: 1px solid color-mix(in srgb, var(--bd) 55%, transparent); }
-    .sb-lbl  {
-      padding: 0 8px 5px; font-size: 10.5px; font-weight: 700;
-      letter-spacing: 0.07em; text-transform: uppercase;
-      color: color-mix(in srgb, var(--tx) 38%, transparent);
-      white-space: nowrap; overflow: hidden; user-select: none;
+    .err-box, .ok-box {
+      border-radius: 10px; padding: 11px 13px; font-size: 13px; line-height: 1.5;
     }
-    .sidebar.col .sb-name,
-    .sidebar.col .sb-lbl,
-    .sidebar.col .ni-body { display: none; }
-    .sidebar.col .sb-brand { padding: 14px 0; justify-content: center; }
-    .sidebar.col .sb-sec   { padding: 8px 6px; }
-    .sidebar.col .ni        { justify-content: center; padding: 9px 0; }
-    .sidebar.col .ni-ico    { width: 32px; height: 32px; border-radius: 9px; }
-    .sidebar.col .ni-ico svg { width: 16px; height: 16px; }
-    .sidebar.col .sb-foot  { padding: 8px 6px; align-items: center; }
+    .err-box { background: var(--err-soft); border: 1px solid rgba(248,113,113,0.28); color: #fecaca; }
+    .ok-box  { background: var(--ok-soft);  border: 1px solid rgba(52,211,153,0.28); color: #bbf7d0; }
 
-    /* nav item */
-    .ni {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 8px; border-radius: 10px;
-      border: 1px solid transparent;
-      color: var(--tx); cursor: pointer;
-      transition: background var(--t), border-color var(--t);
-      user-select: none; width: 100%; text-align: left;
-      background: transparent; font-family: inherit; margin-bottom: 4px;
+    /* ── Login ───────────────────────────────────── */
+    #login-screen {
+      min-height: 100vh; display: grid; place-items: center; padding: 24px;
     }
-    .ni:hover  { background: color-mix(in srgb, var(--tx) 6%, transparent); border-color: color-mix(in srgb, var(--bd) 55%, transparent); }
-    .ni.active { background: color-mix(in srgb, var(--tx) 9%, transparent); border-color: color-mix(in srgb, var(--bd3) 65%, transparent); }
-    .ni.active .ni-ico {
-      background: linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0)),
-                  color-mix(in srgb, var(--pr) 14%, var(--bg2));
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pr) 24%, transparent);
-      color: var(--pr3);
+    .login-shell {
+      width: min(100%, 420px);
+      background: rgba(17, 26, 46, 0.86);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      padding: 32px;
+    }
+    .login-mark {
+      width: 44px; height: 44px; border-radius: 14px;
+      display: grid; place-items: center;
+      background: linear-gradient(145deg, #60a5fa, #2563eb);
+      box-shadow: 0 10px 24px rgba(37,99,235,0.35);
+      margin-bottom: 18px;
+    }
+    .login-h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.03em; }
+    .login-sub { margin-top: 6px; color: var(--text-2); font-size: 13px; margin-bottom: 24px; }
+    .login-form { display: flex; flex-direction: column; gap: 14px; }
+
+    /* ── App shell ───────────────────────────────── */
+    #app { display: none; min-height: 100vh; }
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 22px;
+      background: rgba(11, 18, 32, 0.78);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+    }
+    .brand {
+      display: flex; align-items: center; gap: 11px; min-width: 0;
+    }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
+      display: grid; place-items: center;
+      background: linear-gradient(145deg, #60a5fa, #2563eb);
+      box-shadow: 0 8px 18px rgba(37,99,235,0.28);
+    }
+    .brand-text { min-width: 0; }
+    .brand-name { font-size: 14px; font-weight: 750; letter-spacing: -0.02em; }
+    .brand-tag { font-size: 11px; color: var(--text-3); }
+
+    .nav {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px; border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+    }
+    .nav-btn {
+      height: 34px; padding: 0 14px; border: 0; border-radius: 10px;
+      background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600;
+      transition: background var(--t), color var(--t);
+    }
+    .nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .nav-btn.active { color: #fff; background: var(--brand-soft); box-shadow: inset 0 0 0 1px rgba(59,130,246,0.28); }
+
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
     }
 
-    .ni-ico {
-      width: 28px; height: 28px; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      border-radius: 8px;
-      background: linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0)),
-                  color-mix(in srgb, var(--bg) 84%, transparent);
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bd2) 82%, transparent);
-      transition: background var(--t), box-shadow var(--t);
+    .page-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 20px;
     }
-    .ni-ico svg { width: 14px; height: 14px; }
+    .page-title { font-size: 28px; font-weight: 760; letter-spacing: -0.04em; }
+    .page-sub { margin-top: 6px; color: var(--text-2); font-size: 13px; }
 
-    .ni-body { flex: 1; min-width: 0; }
-    .ni-title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-    .ni-sub   { font-size: 11px; color: var(--tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; margin-top: 1px; }
-
-    .sb-foot {
-      padding: 8px; flex-shrink: 0;
-      border-top: 1px solid color-mix(in srgb, var(--bd) 55%, transparent);
+    /* ── Surfaces ────────────────────────────────── */
+    .card {
+      background: rgba(17, 26, 46, 0.72);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18);
     }
-
-    /* ── Content ──────────────────────────────────── */
-    .content { flex: 1; min-width: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
-    .page    { flex: 1; padding: 28px clamp(20px,3vw,48px) 40px; display: flex; flex-direction: column; gap: 20px; }
-    .ph      { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-    .ph-ttl  { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
-    .ph-sub  { font-size: 13px; color: var(--tx2); margin-top: 3px; }
-
-    /* ── Cards ────────────────────────────────────── */
-    .card   { background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--rl); box-shadow: var(--sh); }
-    .card-h { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--bd); }
+    .card-h {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 16px 18px; border-bottom: 1px solid var(--line);
+    }
     .card-t { font-size: 14px; font-weight: 700; }
-    .card-b { padding: 20px; }
+    .card-b { padding: 18px; }
 
-    /* stat cards */
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-    .stat-card {
-      background: var(--bg2); border: 1px solid var(--bd);
-      border-radius: var(--rl); padding: 20px 22px;
-      box-shadow: var(--sh);
-    }
-    .stat-icon {
-      width: 36px; height: 36px; border-radius: var(--r);
-      background: color-mix(in srgb, var(--pr) 12%, var(--bg2));
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 14px; color: var(--pr3);
-    }
-    .stat-val  { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; margin-bottom: 4px; }
-    .stat-lbl  { font-size: 13px; color: var(--tx2); font-weight: 500; }
-
-    /* overview hero */
     .hero {
-      background: var(--bg2); border: 1px solid var(--bd);
-      border-radius: var(--rl); padding: 28px 32px;
-      box-shadow: var(--sh); position: relative; overflow: hidden;
+      position: relative; overflow: hidden;
+      padding: 28px; margin-bottom: 16px;
+      background:
+        radial-gradient(500px 180px at 85% 20%, rgba(59,130,246,0.22), transparent 60%),
+        rgba(17, 26, 46, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 22px;
     }
-    .hero-bg {
-      position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
-      font-size: 80px; font-weight: 900; letter-spacing: -0.04em;
-      color: color-mix(in srgb, var(--tx) 5%, transparent);
-      user-select: none; pointer-events: none; text-transform: uppercase; line-height: 1;
-    }
-    .hero-greeting { font-size: 13px; color: var(--tx2); margin-bottom: 6px; }
-    .hero-title    { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
-    .hero-desc     { font-size: 13px; color: var(--tx2); margin-top: 8px; }
+    .hero-kicker { color: var(--text-2); font-size: 13px; margin-bottom: 8px; }
+    .hero-title { font-size: 30px; font-weight: 780; letter-spacing: -0.04em; }
+    .hero-desc { margin-top: 8px; color: var(--text-2); max-width: 520px; font-size: 13px; }
+    .hero-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
 
-    /* ── Table ────────────────────────────────────── */
-    .tw  { background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--rl); overflow: hidden; box-shadow: var(--sh); }
-    table{ width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead tr { background: var(--bg3); }
-    th {
-      text-align: left; padding: 10px 16px;
-      font-size: 11px; font-weight: 700; color: var(--tx2);
-      text-transform: uppercase; letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--bd); white-space: nowrap;
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
     }
-    td { padding: 11px 16px; border-bottom: 1px solid color-mix(in srgb,var(--bd) 65%,transparent); vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: color-mix(in srgb,var(--bg3) 50%,transparent); }
+    @media (max-width: 800px) { .stat-grid { grid-template-columns: 1fr; } }
+    .stat {
+      padding: 18px; border-radius: 16px;
+      background: rgba(17, 26, 46, 0.72);
+      border: 1px solid var(--line);
+    }
+    .stat-label { color: var(--text-3); font-size: 12px; font-weight: 600; }
+    .stat-value { margin-top: 8px; font-size: 28px; font-weight: 780; letter-spacing: -0.04em; }
+    .stat-note { margin-top: 6px; color: var(--text-2); font-size: 12px; }
 
-    /* account cards (grid) */
-    .acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    /* ── Account cards ───────────────────────────── */
+    .acc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+    }
     .acc-card {
-      background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--rl);
-      padding: 18px 20px; box-shadow: var(--sh);
-      cursor: pointer; transition: border-color var(--t), box-shadow var(--t);
+      padding: 18px;
+      border-radius: 16px;
+      background: rgba(17, 26, 46, 0.72);
+      border: 1px solid var(--line);
+      transition: border-color var(--t), transform var(--t), background var(--t);
+      cursor: pointer;
     }
-    .acc-card:hover { border-color: var(--bd3); box-shadow: var(--sh2); }
-    .acc-card.selected { border-color: var(--pr); }
-    .acc-card-name { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
-    .acc-card-meta { font-size: 12px; color: var(--tx2); font-family: monospace; }
-    .acc-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+    .acc-card:hover {
+      border-color: rgba(59,130,246,0.4);
+      background: rgba(22, 32, 56, 0.9);
+      transform: translateY(-2px);
+    }
+    .acc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .acc-name { font-size: 16px; font-weight: 720; letter-spacing: -0.02em; }
+    .acc-meta { margin-top: 12px; display: grid; gap: 8px; }
+    .meta-row {
+      display: grid; grid-template-columns: 88px 1fr; gap: 8px;
+      font-size: 12px; color: var(--text-2);
+    }
+    .meta-k { color: var(--text-3); }
+    .meta-v { font-family: var(--mono); color: var(--text); word-break: break-all; }
+    .acc-foot {
+      margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
 
-    /* ── Badge ────────────────────────────────────── */
-    .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-    .bg-ok  { background: #d1fae5; color: #065f46; }
-    .bg-err { background: rgba(198,87,70,0.14); color: #8a3a30; }
-    .bg-run { background: #dbeafe; color: #1e40af; }
-    .bg-inf { background: rgba(139,134,128,0.18); color: #726d67; }
+    /* ── Empty ───────────────────────────────────── */
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; gap: 8px; padding: 56px 20px;
+      border: 1px dashed var(--line-strong); border-radius: 18px;
+      background: rgba(255,255,255,0.015);
+    }
+    .empty h3 { font-size: 16px; font-weight: 700; }
+    .empty p { color: var(--text-2); font-size: 13px; max-width: 320px; }
 
-    /* ── Tabs ─────────────────────────────────────── */
-    .tabs { display: flex; border-bottom: 1px solid var(--bd); }
-    .tab  { padding: 10px 18px; font-size: 13px; font-weight: 600; color: var(--tx2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color var(--t), border-color var(--t); }
-    .tab:hover  { color: var(--tx); }
-    .tab.active { color: var(--tx); border-bottom-color: var(--pr); }
+    /* ── Tabs / table ────────────────────────────── */
+    .tabs {
+      display: inline-flex; gap: 4px; padding: 4px;
+      border: 1px solid var(--line); border-radius: 12px;
+      background: rgba(255,255,255,0.03); margin-bottom: 14px;
+    }
+    .tab {
+      height: 32px; padding: 0 14px; border-radius: 9px;
+      color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center;
+    }
+    .tab.active { color: #fff; background: var(--brand-soft); box-shadow: inset 0 0 0 1px rgba(59,130,246,0.25); }
 
-    /* ── Modal ────────────────────────────────────── */
-    .mo { position: fixed; inset: 0; background: rgba(0,0,0,0.28); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 24px; backdrop-filter: blur(2px); }
+    .tw {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(17, 26, 46, 0.72);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    th {
+      text-align: left; padding: 12px 14px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--text-3);
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    td {
+      padding: 14px; border-bottom: 1px solid rgba(148,163,184,0.08);
+      vertical-align: middle; font-size: 13px;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: rgba(255,255,255,0.02); }
+    .vm-name { font-weight: 700; }
+    .vm-sub { margin-top: 3px; color: var(--text-3); font-size: 12px; }
+
+    .badge {
+      display: inline-flex; align-items: center; height: 24px; padding: 0 9px;
+      border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .bg-ok  { background: var(--ok-soft); color: #86efac; }
+    .bg-err { background: var(--err-soft); color: #fca5a5; }
+    .bg-run { background: rgba(96,165,250,0.16); color: #93c5fd; }
+    .bg-inf { background: rgba(148,163,184,0.14); color: #cbd5e1; }
+
+    .ops {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+    .task-item {
+      padding: 14px 16px; border-radius: 14px; cursor: pointer;
+      background: rgba(17, 26, 46, 0.72); border: 1px solid var(--line);
+      transition: border-color var(--t), background var(--t);
+    }
+    .task-item:hover { border-color: rgba(59,130,246,0.35); background: rgba(22,32,56,0.9); }
+    .task-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .task-msg { font-size: 13px; font-weight: 650; }
+    .task-time { margin-top: 6px; color: var(--text-3); font-size: 12px; }
+
+    /* ── Help ────────────────────────────────────── */
+    .help-grid { display: grid; gap: 12px; }
+    .help-block { padding: 18px 20px; }
+    .help-block h3 { font-size: 15px; font-weight: 720; margin-bottom: 10px; }
+    .help-block p, .help-block li { color: var(--text-2); font-size: 13px; line-height: 1.7; }
+    .help-block ul { padding-left: 18px; }
+    .help-block code {
+      background: rgba(255,255,255,0.06); border: 1px solid var(--line);
+      border-radius: 6px; padding: 1px 6px; color: var(--text);
+    }
+    .map-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .map-table th, .map-table td {
+      text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line);
+      font-size: 12px; vertical-align: top;
+    }
+    .map-table th { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .map-table td:first-child { color: var(--text); font-weight: 600; }
+    .map-table code { white-space: nowrap; }
+
+    /* ── Modal ───────────────────────────────────── */
+    .mo {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(2, 6, 16, 0.66);
+      backdrop-filter: blur(8px);
+    }
     .md {
-      background: var(--bg2); border: 1px solid var(--bd);
-      border-radius: var(--rl); box-shadow: var(--float-sh);
-      width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+      width: min(100%, 520px); max-height: min(90vh, 860px);
       display: flex; flex-direction: column;
+      background: #10192d; border: 1px solid var(--line-strong);
+      border-radius: 18px; box-shadow: var(--shadow); overflow: hidden;
     }
-    .md-lg { max-width: 560px; }
-    .md-sm { max-width: 380px; }
-    .md-h  { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--bd); flex-shrink: 0; }
-    .md-ttl{ font-size: 15px; font-weight: 700; }
-    .md-x  { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 6px; color: var(--tx2); cursor: pointer; font-size: 18px; transition: background var(--t); }
-    .md-x:hover { background: var(--bg3); color: var(--tx); }
-    .md-b  { padding: 24px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-    .md-f  { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px; border-top: 1px solid var(--bd); background: var(--bg2); flex-shrink: 0; }
+    .md-lg { width: min(100%, 640px); }
+    .md-xl { width: min(100%, 720px); }
+    .md-sm { width: min(100%, 420px); }
+    .md-h {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 16px 18px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+    }
+    .md-ttl { font-size: 15px; font-weight: 720; }
+    .md-x {
+      width: 32px; height: 32px; border: 0; border-radius: 8px;
+      background: transparent; color: var(--text-2); font-size: 18px;
+    }
+    .md-x:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .md-b {
+      padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 14px;
+    }
+    .md-f {
+      display: flex; justify-content: flex-end; gap: 8px;
+      padding: 14px 18px; border-top: 1px solid var(--line); flex-shrink: 0;
+      background: rgba(255,255,255,0.02);
+    }
 
-    /* ── Toast ────────────────────────────────────── */
-    #tc { position: fixed; top: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-    .toast { background: var(--float-bg); border: 1px solid var(--float-bd); border-radius: var(--r); padding: 12px 16px; font-size: 13px; box-shadow: var(--float-sh); max-width: 340px; min-width: 200px; pointer-events: auto; animation: tIn 0.2s ease; }
+    .field-guide {
+      padding: 12px 14px; border-radius: 12px;
+      background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.18);
+      color: var(--text-2); font-size: 12px; line-height: 1.6;
+    }
+    .field-guide strong { color: var(--text); font-weight: 650; }
+
+    .cred-box {
+      display: grid; gap: 8px; padding: 14px;
+      border-radius: 12px; background: var(--ok-soft);
+      border: 1px solid rgba(52,211,153,0.25);
+    }
+    .cred-title { font-weight: 720; color: #bbf7d0; }
+    .cred-row {
+      display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: center;
+      font-size: 13px;
+    }
+    .cred-k { color: #86efac; }
+    .cred-v { font-family: var(--mono); word-break: break-all; }
+    .copy-btn {
+      height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(52,211,153,0.25);
+      background: rgba(0,0,0,0.18); color: #bbf7d0; font-size: 12px; font-weight: 600;
+    }
+
+    .logs { display: flex; flex-direction: column; gap: 4px; }
+    .log {
+      display: grid; grid-template-columns: 58px 92px 1fr; gap: 8px;
+      padding: 8px 10px; border-radius: 8px;
+      background: rgba(255,255,255,0.03); font-family: var(--mono); font-size: 12px;
+    }
+    .log.err { background: var(--err-soft); }
+    .log-t { color: var(--text-3); }
+    .log-s { color: #93c5fd; font-weight: 700; }
+
+    pre.rp {
+      margin: 0; padding: 12px; border-radius: 10px;
+      background: rgba(0,0,0,0.25); border: 1px solid var(--line);
+      font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all;
+      max-height: 180px; overflow: auto; color: var(--text-2);
+    }
+
+    /* ── Toast ───────────────────────────────────── */
+    #tc {
+      position: fixed; top: 18px; right: 18px; z-index: 2000;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .toast {
+      min-width: 220px; max-width: 360px; pointer-events: auto;
+      padding: 12px 14px; border-radius: 12px; font-size: 13px;
+      background: #15213a; border: 1px solid var(--line-strong);
+      box-shadow: var(--shadow); animation: slideIn 0.18s ease;
+    }
     .t-ok  { border-left: 3px solid var(--ok); }
     .t-err { border-left: 3px solid var(--err); }
-    @keyframes tIn { from { transform:translateX(12px); opacity:0 } to { transform:none; opacity:1 } }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: none; }
+    }
 
-    /* ── Logs ─────────────────────────────────────── */
-    .logs { display: flex; flex-direction: column; gap: 3px; }
-    .log  { display: grid; grid-template-columns: 56px 88px 1fr; gap: 8px; padding: 5px 10px; border-radius: 6px; background: var(--bg); font-size: 12px; font-family: "SF Mono","Fira Code",monospace; }
-    .log.err { background: rgba(198,87,70,0.12); }
-    .log-t { color: var(--tx3); }
-    .log-s { color: var(--pr3); font-weight: 600; }
+    .section-note {
+      margin-bottom: 12px; color: var(--text-2); font-size: 13px;
+    }
 
-    /* ── Misc ─────────────────────────────────────── */
-    .hidden { display: none !important; }
-    .muted  { color: var(--tx2); }
-    .small  { font-size: 12px; }
-    .mono   { font-family: "SF Mono","Fira Code",monospace; font-size: 12px; }
-    .mt2    { margin-top: 8px; }
-    .mt4    { margin-top: 16px; }
-
-    pre.rp  { font-size: 12px; font-family: "SF Mono","Fira Code",monospace; background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r); padding: 14px; overflow: auto; max-height: 180px; white-space: pre-wrap; word-break: break-all; }
-
-    /* help page */
-    .help-block { background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--rl); padding: 24px; box-shadow: var(--sh); }
-    .help-block h3 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
-    .help-block p, .help-block li { font-size: 13px; color: var(--tx2); line-height: 1.7; }
-    .help-block ul { padding-left: 20px; }
-    .help-block + .help-block { margin-top: 12px; }
-    .help-block code { background: var(--bg3); border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; color: var(--tx); }
-
-    /* empty */
-    .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 60px 24px; text-align: center; color: var(--tx2); }
-    .empty-ico { width: 48px; height: 48px; background: var(--bg2); border: 1px solid var(--bd); border-radius: var(--rl); display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
-    .empty h3  { font-size: 15px; font-weight: 700; color: var(--tx); }
-    .empty p   { font-size: 13px; max-width: 260px; }
-
-    /* inline add-account page divider */
-    .section-ttl { font-size: 13px; font-weight: 700; color: var(--tx2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    @media (max-width: 860px) {
+      .topbar { flex-wrap: wrap; }
+      .nav { order: 3; width: 100%; overflow-x: auto; }
+      .shell { width: calc(100% - 24px); padding-top: 20px; }
+      .page-title { font-size: 24px; }
+      .page-head { flex-direction: column; align-items: stretch; }
+    }
   </style>
 </head>
 <body>
-
 <div id="tc"></div>
 
-<!-- ── Login ──────────────────────────────────────────────────── -->
+<!-- Login -->
 <div id="login-screen">
-  <div class="login-brand">
-    <div class="brand-word">AZURE</div>
-    <div class="brand-word">MANAGER</div>
-    <div class="brand-sub">Virtual Machine Management Panel</div>
-  </div>
-  <div class="login-panel">
-    <div class="login-inner">
-      <div>
-        <div class="login-logo">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-          </svg>
-        </div>
-        <div class="login-h1">Azure Manager</div>
-        <div class="login-sub">输入访问密码登录管理面板</div>
+  <div class="login-shell">
+    <div class="login-mark">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 18 18 6"/><path d="M8 6h10v10"/>
+      </svg>
+    </div>
+    <div class="login-h1">Azure Manager</div>
+    <div class="login-sub">轻量面板，管理多个订阅下的虚拟机。</div>
+    <div class="login-form">
+      <div class="fg">
+        <label class="fl" for="login-pw"><span class="fl-title">访问密码</span></label>
+        <input class="fi" type="password" id="login-pw" placeholder="输入 APP_PASSWORD" autocomplete="current-password" />
       </div>
-      <div class="login-card">
-        <div class="fg">
-          <label class="fl" for="login-pw">访问密码</label>
-          <input class="fi" type="password" id="login-pw" placeholder="输入密码..." autocomplete="current-password" />
-        </div>
-        <div id="login-err" class="err-box hidden"></div>
-        <button class="btn btn-p btn-w btn-lg" id="login-btn">登 录</button>
-      </div>
+      <div id="login-err" class="err-box hidden"></div>
+      <button class="btn btn-p btn-w btn-lg" id="login-btn">进入面板</button>
     </div>
   </div>
 </div>
 
-<!-- ── App ────────────────────────────────────────────────────── -->
+<!-- App -->
 <div id="app">
-  <div class="app-body">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 18 18 6"/><path d="M8 6h10v10"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name">Azure Manager</div>
+        <div class="brand-tag">VM Control Panel</div>
+      </div>
+    </div>
 
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <button class="sbtoggle" id="sbtoggle" title="折叠侧边栏">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="sidebar-inner">
-        <div class="sb-brand">
-          <div class="sb-logo">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-            </svg>
-          </div>
-          <span class="sb-name">Azure Manager</span>
-        </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-page="overview" id="ni-overview">概览</button>
+      <button class="nav-btn" data-page="accounts" id="ni-accounts">账户 / VM</button>
+      <button class="nav-btn" data-page="settings" id="ni-settings">开机脚本</button>
+      <button class="nav-btn" data-page="help" id="ni-help">帮助</button>
+    </nav>
 
-        <div class="sb-sec" style="flex:1">
-          <div class="sb-lbl">功能</div>
+    <div class="top-actions">
+      <button class="btn btn-s btn-sm" id="btn-logout">退出</button>
+    </div>
+  </header>
 
-          <button class="ni active" data-page="overview" id="ni-overview">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">概览</span>
-            </span>
-          </button>
-
-          <button class="ni" data-page="accounts" id="ni-accounts">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">账户管理</span>
-            </span>
-          </button>
-
-          <button class="ni" data-page="add" id="ni-add">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">添加账户</span>
-            </span>
-          </button>
-
-          <button class="ni" data-page="settings" id="ni-settings">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">开机脚本</span>
-            </span>
-          </button>
-
-          <button class="ni" data-page="help" id="ni-help">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">使用说明</span>
-            </span>
-          </button>
-        </div>
-
-        <div class="sb-foot">
-          <button class="ni" id="btn-logout">
-            <span class="ni-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            </span>
-            <span class="ni-body">
-              <span class="ni-title">退出登录</span>
-            </span>
-          </button>
+  <main class="shell">
+    <!-- Overview -->
+    <section class="page" id="pg-overview">
+      <div class="hero">
+        <div class="hero-kicker" id="hero-greeting">你好</div>
+        <div class="hero-title">欢迎回来</div>
+        <div class="hero-desc">绑定 Azure 应用注册凭据后，即可创建、启停、换 IP 与删除虚拟机。所有操作异步执行，可在任务列表跟踪。</div>
+        <div class="hero-actions">
+          <button class="btn btn-p" onclick="switchPage('accounts')">管理账户</button>
+          <button class="btn btn-s" onclick="openAddAccount()">添加账户</button>
         </div>
       </div>
-    </aside>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-label">已绑定账户</div>
+          <div class="stat-value" id="stat-accounts">0</div>
+          <div class="stat-note">每个账户对应一个订阅</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">当前工作区</div>
+          <div class="stat-value" style="font-size:20px" id="stat-workspace">未选择</div>
+          <div class="stat-note">进入账户后可操作 VM</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">推荐路径</div>
+          <div class="stat-value" style="font-size:18px">添加 → 验证 → 创建</div>
+          <div class="stat-note">凭据字段已对齐 Azure 控制台命名</div>
+        </div>
+      </div>
+    </section>
 
-    <!-- Content -->
-    <div class="content">
-
-      <!-- Page: 概览 -->
-      <div class="page" id="pg-overview">
-        <div class="ph">
+    <!-- Accounts / VMs -->
+    <section class="page hidden" id="pg-accounts">
+      <div id="view-acc-list">
+        <div class="page-head">
           <div>
-            <div class="ph-ttl">概览</div>
-            <div class="ph-sub">运行状态与统计信息</div>
+            <div class="page-title">账户 / VM</div>
+            <div class="page-sub">选择一个订阅账户进入虚拟机工作台</div>
+          </div>
+          <button class="btn btn-p" id="btn-open-add" onclick="openAddAccount()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+            添加账户
+          </button>
+        </div>
+        <div id="acc-grid" class="acc-grid"></div>
+      </div>
+
+      <div id="view-vms" class="hidden">
+        <div class="page-head">
+          <div style="display:flex;align-items:flex-start;gap:12px;min-width:0">
+            <button class="btn btn-s btn-sm" id="btn-back-accounts">← 返回</button>
+            <div style="min-width:0">
+              <div class="page-title" id="vm-acc-title" style="font-size:24px">-</div>
+              <div class="page-sub mono" id="vm-acc-sub">-</div>
+            </div>
+          </div>
+          <div class="bgrp">
+            <button class="btn btn-s btn-sm" id="btn-refresh-vms">刷新</button>
+            <button class="btn btn-p btn-sm" id="btn-create-vm">创建虚拟机</button>
+            <button class="btn btn-s btn-sm" id="btn-edit-acc">编辑</button>
+            <button class="btn btn-dg btn-sm" id="btn-del-acc">删除账户</button>
           </div>
         </div>
-        <div class="hero">
-          <div class="hero-bg" id="hero-bg">AZURE</div>
-          <div class="hero-greeting" id="hero-greeting">你好</div>
-          <div class="hero-title">欢迎回来</div>
-          <div class="hero-desc">Azure 虚拟机管理面板，轻松管理多个订阅下的虚拟机资源。</div>
+
+        <div class="tabs">
+          <div class="tab active" data-vtab="vms">虚拟机</div>
+          <div class="tab" data-vtab="tasks">任务</div>
         </div>
-        <div class="stat-grid" id="stat-grid">
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-            </div>
-            <div class="stat-val" id="stat-accounts">-</div>
-            <div class="stat-lbl">Azure 账户</div>
+
+        <div id="vtab-vms">
+          <div class="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th>虚拟机</th>
+                  <th>区域 / 规格</th>
+                  <th>状态</th>
+                  <th>公网 IP</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="vm-tbody"></tbody>
+            </table>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-            </div>
-            <div class="stat-val">Bun</div>
-            <div class="stat-lbl">运行时</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
-            <div class="stat-val" style="font-size:18px">SQLite</div>
-            <div class="stat-lbl">数据存储</div>
-          </div>
+        </div>
+        <div id="vtab-tasks" class="hidden">
+          <div id="task-list" class="task-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="page hidden" id="pg-settings">
+      <div class="page-head">
+        <div>
+          <div class="page-title">开机脚本</div>
+          <div class="page-sub">创建 VM 时默认注入的 cloud-init / bash 脚本</div>
+        </div>
+      </div>
+      <div class="card" style="max-width:760px">
+        <div class="card-h">
+          <span class="card-t">全局默认脚本</span>
+        </div>
+        <div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+          <textarea class="fi mono" id="startup-script" rows="16" spellcheck="false"></textarea>
+          <div class="fhint">创建虚拟机时可单独覆盖。留空创建时将使用这里的全局默认值。</div>
+          <div><button class="btn btn-p" id="btn-save-script">保存脚本</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Help -->
+    <section class="page hidden" id="pg-help">
+      <div class="page-head">
+        <div>
+          <div class="page-title">帮助</div>
+          <div class="page-sub">字段对照、快速上手与数据说明</div>
+        </div>
+      </div>
+      <div class="help-grid">
+        <div class="card help-block">
+          <h3>Azure 控制台字段对照</h3>
+          <p>添加账户时，请按下方对照从 Azure 门户复制值。左侧是门户里常见名称，右侧是本面板字段。</p>
+          <table class="map-table">
+            <thead>
+              <tr>
+                <th>Azure 门户名称</th>
+                <th>本面板字段</th>
+                <th>常见位置</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>Application (client) ID</code></td>
+                <td>应用 (客户端) ID</td>
+                <td>Microsoft Entra ID → 应用注册 → 概述</td>
+              </tr>
+              <tr>
+                <td><code>Directory (tenant) ID</code></td>
+                <td>目录 (租户) ID</td>
+                <td>同上，概述页</td>
+              </tr>
+              <tr>
+                <td><code>Client secret Value</code></td>
+                <td>客户端密钥 Value</td>
+                <td>应用注册 → 证书和密码 → 新建客户端密码<br><strong>注意复制 Value，不是 Secret ID</strong></td>
+              </tr>
+              <tr>
+                <td><code>Subscription ID</code></td>
+                <td>订阅 ID</td>
+                <td>订阅 → 概述</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card help-block">
+          <h3>快速开始</h3>
+          <ul>
+            <li>在 Entra ID 创建应用注册，并生成客户端密码</li>
+            <li>在目标订阅 IAM 中给该应用分配 <code>Contributor</code></li>
+            <li>回到面板「添加账户」，粘贴四个 ID/密钥后先「验证凭据」</li>
+            <li>验证通过后保存，进入账户即可管理虚拟机</li>
+          </ul>
+        </div>
+
+        <div class="card help-block">
+          <h3>虚拟机操作</h3>
+          <ul>
+            <li><strong>启动 / 停止 / 重启</strong>：控制电源状态</li>
+            <li><strong>换 IP</strong>：释放旧公网 IP，绑定新静态 IP</li>
+            <li><strong>删除</strong>：删除整资源组（VM 及关联网络资源）</li>
+            <li>创建与运维任务都是异步的，可在「任务」页查看进度与 SSH 信息</li>
+          </ul>
+        </div>
+
+        <div class="card help-block">
+          <h3>数据与迁移</h3>
+          <p>账户凭据（加密）与任务记录保存在挂载目录的 <code>data/</code> 中。迁移时复制整个 <code>data/</code> 目录即可。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal: 添加账户 -->
+<div id="mo-add-acc" class="mo hidden">
+  <div class="md md-xl">
+    <div class="md-h">
+      <span class="md-ttl">添加 Azure 账户</span>
+      <button class="md-x" data-close="mo-add-acc">×</button>
+    </div>
+    <div class="md-b">
+      <div class="field-guide">
+        <strong>字段已按 Azure 门户命名。</strong>
+        应用/租户 ID 来自「应用注册 → 概述」；密钥请复制新建客户端密码时的 <strong>Value</strong>（不是 Secret ID）；订阅 ID 来自「订阅 → 概述」。
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="add-name">
+          <span class="fl-main">
+            <span class="fl-title">显示名称</span>
+            <span class="fl-azure">仅用于本面板识别，可自定义</span>
+          </span>
+        </label>
+        <input class="fi" type="text" id="add-name" placeholder="例如：生产订阅 / 个人实验" />
+      </div>
+
+      <div class="frow">
+        <div class="fg">
+          <label class="fl" for="add-cid">
+            <span class="fl-main">
+              <span class="fl-title">应用 (客户端) ID</span>
+              <span class="fl-azure">Application (client) ID</span>
+            </span>
+          </label>
+          <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
+        </div>
+        <div class="fg">
+          <label class="fl" for="add-tid">
+            <span class="fl-main">
+              <span class="fl-title">目录 (租户) ID</span>
+              <span class="fl-azure">Directory (tenant) ID</span>
+            </span>
+          </label>
+          <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
         </div>
       </div>
 
-      <!-- Page: 账户管理 -->
-      <div class="page hidden" id="pg-accounts">
-        <!-- accounts list -->
-        <div id="view-acc-list">
-          <div class="ph">
-            <div>
-              <div class="ph-ttl">账户管理</div>
-              <div class="ph-sub">选择账户查看虚拟机</div>
-            </div>
-            <button class="btn btn-p btn-sm" onclick="switchPage('add')">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
-              添加账户
-            </button>
-          </div>
-          <div id="acc-grid" class="acc-grid"></div>
+      <div class="fg">
+        <label class="fl" for="add-sec">
+          <span class="fl-main">
+            <span class="fl-title">客户端密钥 Value</span>
+            <span class="fl-azure">Client secret · Value（不是 Secret ID）</span>
+          </span>
+        </label>
+        <input class="fi mono" type="password" id="add-sec" placeholder="新建客户端密码后立刻复制的 Value" autocomplete="new-password" />
+        <div class="fhint">路径：Entra ID → 应用注册 → 证书和密码 → 新建客户端密码。只在创建时显示一次。</div>
+      </div>
+
+      <div class="frow">
+        <div class="fg">
+          <label class="fl" for="add-sid">
+            <span class="fl-main">
+              <span class="fl-title">订阅 ID</span>
+              <span class="fl-azure">Subscription ID</span>
+            </span>
+          </label>
+          <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
         </div>
-
-        <!-- vm view for selected account -->
-        <div id="view-vms" class="hidden">
-          <div class="ph">
-            <div style="display:flex;align-items:center;gap:10px">
-              <button class="btn btn-g btn-sm" id="btn-back-accounts">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                账户列表
-              </button>
-              <div>
-                <div class="ph-ttl" id="vm-acc-title">-</div>
-                <div class="ph-sub" id="vm-acc-sub">Azure 订阅</div>
-              </div>
-            </div>
-            <div class="bgrp">
-              <button class="btn btn-s btn-sm" id="btn-refresh-vms">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-                刷新
-              </button>
-              <button class="btn btn-p btn-sm" id="btn-create-vm">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
-                创建虚拟机
-              </button>
-              <button class="btn btn-s btn-sm" id="btn-edit-acc">编辑账户</button>
-              <button class="btn btn-dg btn-sm" id="btn-del-acc">删除账户</button>
-            </div>
-          </div>
-
-          <div class="tabs">
-            <div class="tab active" data-vtab="vms">虚拟机</div>
-            <div class="tab" data-vtab="tasks">任务</div>
-          </div>
-
-          <div id="vtab-vms">
-            <div class="tw">
-              <table><thead><tr><th>名称</th><th>资源组</th><th>区域</th><th>规格</th><th>状态</th><th>公网 IP</th><th>操作</th></tr></thead>
-              <tbody id="vm-tbody"></tbody></table>
-            </div>
-          </div>
-          <div id="vtab-tasks" class="hidden">
-            <div id="task-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          </div>
+        <div class="fg">
+          <label class="fl" for="add-exp">
+            <span class="fl-main">
+              <span class="fl-title">密钥到期日（可选）</span>
+              <span class="fl-azure">仅提醒，不影响鉴权</span>
+            </span>
+          </label>
+          <input class="fi" type="date" id="add-exp" />
         </div>
       </div>
 
-      <!-- Page: 添加账户 -->
-      <div class="page hidden" id="pg-add">
-        <div class="ph">
-          <div>
-            <div class="ph-ttl">添加账户</div>
-            <div class="ph-sub">绑定 Azure Service Principal 凭据</div>
-          </div>
-        </div>
-        <div style="max-width:480px;display:flex;flex-direction:column;gap:16px">
-          <div class="card">
-            <div class="card-h"><span class="card-t">账户信息</span></div>
-            <div class="card-b" style="display:flex;flex-direction:column;gap:18px">
-              <div class="fg">
-                <label class="fl">账户名称</label>
-                <input class="fi" type="text" id="add-name" placeholder="例：My Azure Subscription" />
-                <div class="fhint">用于在面板中识别该账户</div>
-              </div>
-              <div class="fg">
-                <label class="fl">Client ID</label>
-                <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-              </div>
-              <div class="fg">
-                <label class="fl">Client Secret</label>
-                <input class="fi" type="password" id="add-sec" placeholder="Service Principal 密钥" />
-              </div>
-              <div class="fg">
-                <label class="fl">Tenant ID</label>
-                <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-              </div>
-              <div class="fg">
-                <label class="fl">Subscription ID</label>
-                <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-              </div>
-              <div class="fg">
-                <label class="fl">过期日期 <span class="muted small">(可选)</span></label>
-                <input class="fi" type="date" id="add-exp" style="max-width:180px" />
-                <div class="fhint">仅用于提醒，不影响功能</div>
-              </div>
-            </div>
-          </div>
-          <div id="add-check-result" class="hidden"></div>
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-s" id="btn-check-add">检查凭据</button>
-            <button class="btn btn-p" id="btn-save-add">保存账户</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Page: 设置 -->
-      <div class="page hidden" id="pg-settings">
-        <div class="ph">
-          <div>
-            <div class="ph-ttl">开机脚本</div>
-            <div class="ph-sub">创建虚拟机时的默认脚本</div>
-          </div>
-        </div>
-        <div style="max-width:640px">
-          <div class="card">
-            <div class="card-h"><span class="card-t">默认脚本（User Data）</span></div>
-            <div class="card-b" style="display:flex;flex-direction:column;gap:12px">
-              <textarea class="fi mono" id="startup-script" rows="14"></textarea>
-              <div class="fhint">创建虚拟机时默认使用此脚本，可在创建时单独覆盖</div>
-              <div><button class="btn btn-p" id="btn-save-script">保存脚本</button></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Page: 使用说明 -->
-      <div class="page hidden" id="pg-help">
-        <div class="ph">
-          <div>
-            <div class="ph-ttl">使用说明</div>
-            <div class="ph-sub">快速上手指南</div>
-          </div>
-        </div>
-        <div style="max-width:680px;display:flex;flex-direction:column;gap:12px">
-          <div class="help-block">
-            <h3>🚀 快速开始</h3>
-            <ul>
-              <li>点击左侧「添加账户」，填入 Azure Service Principal 的 <code>client_id</code>、<code>client_secret</code>、<code>tenant_id</code>、<code>subscription_id</code></li>
-              <li>点击「检查凭据」验证账户有效性，通过后保存</li>
-              <li>进入「账户管理」，点击账户卡片查看该订阅下的虚拟机</li>
-            </ul>
-          </div>
-          <div class="help-block">
-            <h3>☁️ 创建虚拟机</h3>
-            <ul>
-              <li>进入账户 → 点击「创建虚拟机」</li>
-              <li>选择区域、实例规格、操作系统、磁盘大小</li>
-              <li>可选填开机脚本，留空则使用「开机脚本」中的默认脚本</li>
-              <li>任务提交后可在「任务」标签页查看进度</li>
-            </ul>
-          </div>
-          <div class="help-block">
-            <h3>🔧 VM 操作</h3>
-            <p>在虚拟机列表中，每台 VM 支持以下操作：</p>
-            <ul style="margin-top:8px">
-              <li><strong>启动 / 停止 / 重启</strong>：控制 VM 运行状态</li>
-              <li><strong>换 IP</strong>：释放旧公网 IP 并分配新静态 IP</li>
-              <li><strong>删除</strong>：删除整个资源组（含 VM 及所有关联资源）</li>
-            </ul>
-          </div>
-          <div class="help-block">
-            <h3>🔑 Azure 凭据准备</h3>
-            <ul>
-              <li>在 Azure Active Directory 创建 App Registration</li>
-              <li>生成 Client Secret</li>
-              <li>在目标订阅的 IAM 中为该 App 赋予 <code>Contributor</code> 角色</li>
-              <li>记录 <code>Application (client) ID</code>、<code>Directory (tenant) ID</code>、<code>Subscription ID</code></li>
-            </ul>
-          </div>
-          <div class="help-block">
-            <h3>💾 数据迁移</h3>
-            <p>所有数据（包括账户凭据和加密密钥）存储在 Docker 挂载目录的 <code>data/</code> 文件夹中。迁移只需将整个 <code>data/</code> 目录复制到新机器即可。</p>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /content -->
+      <div id="add-check-result" class="hidden"></div>
+    </div>
+    <div class="md-f">
+      <button class="btn btn-g" data-close="mo-add-acc">取消</button>
+      <button class="btn btn-s" id="btn-check-add">验证凭据</button>
+      <button class="btn btn-p" id="btn-save-add">保存账户</button>
+    </div>
   </div>
 </div>
 
 <!-- Modal: 创建 VM -->
 <div id="mo-create-vm" class="mo hidden">
   <div class="md md-lg">
-    <div class="md-h"><span class="md-ttl">创建虚拟机</span><button class="md-x" data-close="mo-create-vm">×</button></div>
+    <div class="md-h">
+      <span class="md-ttl">创建虚拟机</span>
+      <button class="md-x" data-close="mo-create-vm">×</button>
+    </div>
     <div class="md-b">
       <div class="frow">
-        <div class="fg"><label class="fl">区域</label><select class="fi" id="create-region"><option value="">加载中...</option></select></div>
-        <div class="fg"><label class="fl">实例规格</label>
+        <div class="fg">
+          <label class="fl" for="create-region"><span class="fl-title">区域</span></label>
+          <select class="fi" id="create-region"><option value="">加载中...</option></select>
+        </div>
+        <div class="fg">
+          <label class="fl" for="create-size"><span class="fl-title">实例规格</span></label>
           <select class="fi" id="create-size">
-            <option value="Standard_B1s">Standard_B1s — 1vCPU / 1 GB</option>
-            <option value="Standard_B1ms">Standard_B1ms — 1vCPU / 2 GB</option>
-            <option value="Standard_B2s">Standard_B2s — 2vCPU / 4 GB</option>
-            <option value="Standard_B2ms">Standard_B2ms — 2vCPU / 8 GB</option>
-            <option value="Standard_D2s_v3">Standard_D2s_v3 — 2vCPU / 8 GB</option>
-            <option value="Standard_D4s_v3">Standard_D4s_v3 — 4vCPU / 16 GB</option>
+            <option value="Standard_B1s">Standard_B1s — 1 vCPU / 1 GB</option>
+            <option value="Standard_B1ms">Standard_B1ms — 1 vCPU / 2 GB</option>
+            <option value="Standard_B2s">Standard_B2s — 2 vCPU / 4 GB</option>
+            <option value="Standard_B2ms">Standard_B2ms — 2 vCPU / 8 GB</option>
+            <option value="Standard_D2s_v3">Standard_D2s_v3 — 2 vCPU / 8 GB</option>
+            <option value="Standard_D4s_v3">Standard_D4s_v3 — 4 vCPU / 16 GB</option>
           </select>
         </div>
       </div>
       <div class="frow">
-        <div class="fg"><label class="fl">操作系统</label>
+        <div class="fg">
+          <label class="fl" for="create-os"><span class="fl-title">操作系统</span></label>
           <select class="fi" id="create-os">
             <option value="debian12">Debian 12</option>
             <option value="debian11">Debian 11</option>
@@ -760,21 +822,31 @@
             <option value="ubuntu20">Ubuntu 20.04 LTS</option>
           </select>
         </div>
-        <div class="fg"><label class="fl">磁盘 (GB)</label><input class="fi" type="number" id="create-disk" value="30" min="30" max="1024" /></div>
+        <div class="fg">
+          <label class="fl" for="create-disk"><span class="fl-title">磁盘 (GB)</span></label>
+          <input class="fi" type="number" id="create-disk" value="30" min="30" max="1024" />
+        </div>
       </div>
-      <div class="fg"><label class="fl">公网 IP 类型</label>
-        <select class="fi" id="create-ip" style="max-width:200px">
-          <option value="Static">静态 (Static)</option>
-          <option value="Dynamic">动态 (Dynamic)</option>
+      <div class="fg">
+        <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
+        <select class="fi" id="create-ip" style="max-width:240px">
+          <option value="Static">静态 Static</option>
+          <option value="Dynamic">动态 Dynamic</option>
         </select>
       </div>
-      <div class="fg"><label class="fl">开机脚本 <span class="muted small">(留空用全局默认)</span></label>
+      <div class="fg">
+        <label class="fl" for="create-ud">
+          <span class="fl-main">
+            <span class="fl-title">开机脚本</span>
+            <span class="fl-azure">留空则使用全局默认</span>
+          </span>
+        </label>
         <textarea class="fi mono" id="create-ud" rows="5" placeholder="#!/bin/bash&#10;..."></textarea>
       </div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" data-close="mo-create-vm">取消</button>
-      <button class="btn btn-p" id="btn-submit-vm">创建虚拟机</button>
+      <button class="btn btn-p" id="btn-submit-vm">提交创建</button>
     </div>
   </div>
 </div>
@@ -782,8 +854,13 @@
 <!-- Modal: 确认 -->
 <div id="mo-confirm" class="mo hidden">
   <div class="md md-sm">
-    <div class="md-h"><span class="md-ttl" id="cf-title">确认操作</span><button class="md-x" data-close="mo-confirm">×</button></div>
-    <div class="md-b" style="gap:0"><p id="cf-desc" style="font-size:14px;line-height:1.7;color:var(--tx2)"></p></div>
+    <div class="md-h">
+      <span class="md-ttl" id="cf-title">确认操作</span>
+      <button class="md-x" data-close="mo-confirm">×</button>
+    </div>
+    <div class="md-b">
+      <p id="cf-desc" class="muted" style="font-size:14px;line-height:1.7"></p>
+    </div>
     <div class="md-f">
       <button class="btn btn-g" data-close="mo-confirm">取消</button>
       <button class="btn btn-p" id="btn-cf">确认</button>
@@ -794,11 +871,14 @@
 <!-- Modal: 任务详情 -->
 <div id="mo-task" class="mo hidden">
   <div class="md md-lg">
-    <div class="md-h"><span class="md-ttl">任务详情</span><button class="md-x" data-close="mo-task">×</button></div>
+    <div class="md-h">
+      <span class="md-ttl">任务详情</span>
+      <button class="md-x" data-close="mo-task">×</button>
+    </div>
     <div class="md-b">
       <div id="task-info"></div>
       <div>
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:8px">执行日志</div>
+        <div class="small muted" style="margin-bottom:8px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">执行日志</div>
         <div class="logs" id="task-logs"></div>
       </div>
     </div>
@@ -808,11 +888,20 @@
 <!-- Modal: 编辑账户 -->
 <div id="mo-edit-acc" class="mo hidden">
   <div class="md">
-    <div class="md-h"><span class="md-ttl">编辑账户</span><button class="md-x" data-close="mo-edit-acc">×</button></div>
+    <div class="md-h">
+      <span class="md-ttl">编辑账户</span>
+      <button class="md-x" data-close="mo-edit-acc">×</button>
+    </div>
     <div class="md-b">
       <input type="hidden" id="edit-acc-id" />
-      <div class="fg"><label class="fl">账户名称</label><input class="fi" type="text" id="edit-acc-name" /></div>
-      <div class="fg"><label class="fl">过期日期 <span class="muted small">(可选)</span></label><input class="fi" type="date" id="edit-acc-exp" style="max-width:200px"/></div>
+      <div class="fg">
+        <label class="fl" for="edit-acc-name"><span class="fl-title">显示名称</span></label>
+        <input class="fi" type="text" id="edit-acc-name" />
+      </div>
+      <div class="fg">
+        <label class="fl" for="edit-acc-exp"><span class="fl-title">密钥到期日（可选）</span></label>
+        <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" />
+      </div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" data-close="mo-edit-acc">取消</button>
