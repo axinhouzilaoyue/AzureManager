@@ -12,6 +12,7 @@ import {
   getDecryptedAccountOrThrow,
   getGlobalStartupScript,
   getTaskResponse,
+  listTasksForAccount,
   initializeDatabase,
   listAccounts,
   setGlobalStartupScript,
@@ -274,6 +275,16 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse({ success: true, userData: body.userData });
   }
 
+  // task status only needs login (so background polling survives account deselection)
+  const taskMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/task_status\/([0-9a-fA-F-]{36})$/)
+    : null;
+  if (taskMatch) {
+    const task = await getTaskResponse(ENV, taskMatch[1]);
+    if (!task) return errorResponse(404, "任务未找到");
+    return jsonResponse(task);
+  }
+
   // routes requiring selected account
   const selectedId = auth.session.selectedAccountId;
   if (!selectedId) return errorResponse(403, "请先选择一个 Azure 账户");
@@ -325,13 +336,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse({ message: msg, taskId });
   }
 
-  const taskMatch = req.method === "GET"
-    ? url.pathname.match(/^\/api\/task_status\/([0-9a-fA-F-]{36})$/)
-    : null;
-  if (taskMatch) {
-    const task = await getTaskResponse(ENV, taskMatch[1]);
-    if (!task) return errorResponse(404, "任务未找到");
-    return jsonResponse(task);
+  if (req.method === "GET" && url.pathname === "/api/tasks") {
+    return jsonResponse(await listTasksForAccount(ENV, selectedId));
   }
 
   return errorResponse(404, "接口不存在");

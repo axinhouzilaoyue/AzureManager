@@ -154,8 +154,9 @@ function renderVms() {
     return;
   }
   tb.innerHTML = S.vms.map(vm => {
-    const ps  = vm.powerState || '-';
-    const bc  = ps.includes('running') ? 'bg-ok' : ps.includes('stopped') ? 'bg-err' : 'bg-inf';
+    const ps  = vm.status || '-';
+    const psLower = String(ps).toLowerCase();
+    const bc  = psLower.includes('running') ? 'bg-ok' : (psLower.includes('deallocat') || psLower.includes('stopped')) ? 'bg-err' : 'bg-inf';
     const rg  = esc(vm.resourceGroup);
     const vmn = esc(vm.name);
     return `<tr>
@@ -164,7 +165,7 @@ function renderVms() {
       <td class="muted small">${esc(vm.location)}</td>
       <td class="muted small">${esc(vm.vmSize||'-')}</td>
       <td><span class="badge ${bc}">${esc(ps)}</span></td>
-      <td class="mono">${esc(vm.publicIpAddress||'-')}</td>
+      <td class="mono">${esc(vm.publicIp||'-')}</td>
       <td><div class="bgrp">
         <button class="btn btn-s btn-sm" onclick="vmAction('start','${rg}','${vmn}')">启动</button>
         <button class="btn btn-s btn-sm" onclick="vmAction('stop','${rg}','${vmn}')">停止</button>
@@ -229,7 +230,7 @@ document.querySelectorAll('.tab[data-vtab]').forEach(t => {
     t.classList.add('active');
     $('vtab-vms').classList.toggle('hidden',   S.activeVTab !== 'vms');
     $('vtab-tasks').classList.toggle('hidden', S.activeVTab !== 'tasks');
-    if (S.activeVTab === 'tasks') renderTaskList([]);
+    if (S.activeVTab === 'tasks') loadTasks();
   });
 });
 
@@ -246,6 +247,20 @@ function renderTaskList(tasks) {
     : `<div class="muted" style="padding:32px;text-align:center;font-size:13px">暂无任务记录</div>`;
 }
 
+async function loadTasks() {
+  if (!S.selectedAccId) {
+    renderTaskList([]);
+    return;
+  }
+  try {
+    const tasks = await api('GET', '/api/tasks');
+    renderTaskList(Array.isArray(tasks) ? tasks : []);
+  } catch (e) {
+    toast(`加载任务失败: ${e.message}`, 'error');
+    renderTaskList([]);
+  }
+}
+
 // ── task tracking ─────────────────────────────────────────────
 function trackTask(taskId) {
   if (S.trackingTasks.has(taskId)) return;
@@ -254,19 +269,24 @@ function trackTask(taskId) {
 }
 
 async function pollTask(taskId) {
+  // First poll quickly so short tasks still surface results.
   for (let i = 0; i < 180; i++) {
-    await new Promise(r => setTimeout(r, 5000));
+    if (i > 0) await new Promise(r => setTimeout(r, 5000));
     try {
       const t = await api('GET', `/api/task_status/${taskId}`);
       if (t.status === 'success') {
         toast('任务完成', 'success');
         S.trackingTasks.delete(taskId);
         if (S.selectedAccId) loadVms();
+        if (S.activeVTab === 'tasks') loadTasks();
+        await showTaskDetail(taskId);
         return;
       }
       if (t.status === 'failure') {
         toast(`任务失败: ${t.errorMessage || t.message}`, 'error');
         S.trackingTasks.delete(taskId);
+        if (S.activeVTab === 'tasks') loadTasks();
+        await showTaskDetail(taskId);
         return;
       }
     } catch { /* continue */ }
@@ -277,11 +297,23 @@ async function pollTask(taskId) {
 async function showTaskDetail(taskId) {
   try {
     const t = await api('GET', `/api/task_status/${taskId}`);
+    const result = t.result && typeof t.result === 'object' ? t.result : null;
+    const credBox = result && result.username && result.password
+      ? `<div class="ok-box" style="margin:10px 0">
+           <div style="font-weight:700;margin-bottom:6px">SSH 登录信息</div>
+           <div>公网 IP：<span class="mono">${esc(result.publicIp || '-')}</span></div>
+           <div>用户名：<span class="mono">${esc(result.username)}</span></div>
+           <div>密码：<span class="mono">${esc(result.password)}</span></div>
+         </div>`
+      : (result && result.publicIp
+          ? `<div class="ok-box" style="margin:10px 0">公网 IP：<span class="mono">${esc(result.publicIp)}</span></div>`
+          : '');
     $('task-info').innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         ${badge(t.status)}
         <span style="font-size:14px;font-weight:600">${esc(t.message||'')}</span>
       </div>
+      ${credBox}
       ${t.result ? `<pre class="rp">${esc(JSON.stringify(t.result,null,2))}</pre>` : ''}`;
     $('task-logs').innerHTML = (t.logs||[]).map(l => `
       <div class="log ${l.level==='error'?'err':''}">
@@ -462,10 +494,25 @@ async function init() {
     const session = await api('GET', '/api/session');
     if (!session.loggedIn) return;
     S.accounts = await api('GET', '/api/accounts');
-    showApp();
-    // restore selected account if any
-    if (session.selectedAccountId) {
-      S.selectedAccId = session.selectedAccountId;
+    $('login-screen').style.display = 'none';
+    $('app').style.display = 'block';
+
+    const restoreId = session.selectedAccountId
+      && S.accounts.some(a => a.id === session.selectedAccountId)
+      ? session.selectedAccountId
+      : null;
+
+    if (restoreId) {
+      // Enter accounts page shell, then restore the selected account VM view.
+      S.activePage = 'accounts';
+      PAGES.forEach(p => {
+        $(`pg-${p}`).classList.toggle('hidden', p !== 'accounts');
+        const ni = $(`ni-${p}`);
+        if (ni) ni.classList.toggle('active', p === 'accounts');
+      });
+      await openVmView(restoreId);
+    } else {
+      switchPage('overview');
     }
   } catch { /* stay on login */ }
 }

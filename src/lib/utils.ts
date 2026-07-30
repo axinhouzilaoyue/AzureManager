@@ -10,7 +10,7 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
     headers.set("content-type", "application/json; charset=utf-8");
   }
 
-  return new Response(JSON.stringify(body, null, 2), {
+  return new Response(JSON.stringify(body), {
     ...init,
     headers,
   });
@@ -72,8 +72,19 @@ export function createCookie(name: string, value: string, options: {
   return parts.join("; ");
 }
 
-export function clearCookie(name: string): string {
-  return `${name}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+export function clearCookie(name: string, options: {
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
+  path?: string;
+} = {}): string {
+  // Keep attributes aligned with createCookie so logout clears the session on HTTP too.
+  return createCookie(name, "", {
+    maxAge: 0,
+    httpOnly: true,
+    secure: options.secure ?? false,
+    sameSite: options.sameSite ?? "Lax",
+    path: options.path ?? "/",
+  });
 }
 
 export function toBase64Url(bytes: Uint8Array): string {
