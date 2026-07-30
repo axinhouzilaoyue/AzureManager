@@ -38,6 +38,7 @@ export interface AccountRecord {
   tenantId: string;
   subscriptionId: string;
   clientSecretCiphertext: string;
+  email: string | null;
   expirationDate: string | null;
   createdAt: string;
   updatedAt: string;
@@ -53,9 +54,17 @@ export interface AccountSummary {
   clientId: string;
   tenantId: string;
   subscriptionId: string;
+  email: string | null;
   expirationDate: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AccountOverview {
+  id: string;
+  subscriptionDisplayName: string;
+  state: string;
+  vmCount: number;
 }
 
 export interface AccountCheckResult {

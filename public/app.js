@@ -1,6 +1,7 @@
 // ── state ─────────────────────────────────────────────────────
 const S = {
   accounts: [],
+  accountStats: {}, // id -> { vmCount, subscriptionDisplayName, state, loading, error }
   activePage: 'overview',
   selectedAccId: null,
   vms: [],
@@ -8,6 +9,8 @@ const S = {
   activeVTab: 'vms',
   pendingAction: null,
   trackingTasks: new Set(),
+  addVerifiedKey: null, // fingerprint of last successfully verified credentials
+  pendingNewAccountId: null,
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -132,8 +135,39 @@ function showAccList() {
   showAccountListView();
 }
 
-function renderAccGrid() {
+function formatExpiry(dateStr) {
+  if (!dateStr) return '未设置';
+  return dateStr;
+}
+
+function accountCardHtml(a) {
+  const st = S.accountStats[a.id] || {};
+  const vmText = st.loading ? '加载中…'
+    : (typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.error ? '获取失败' : '-'));
+  const subName = st.subscriptionDisplayName || a.name;
+  const state = st.state || '-';
+  return `
+    <div class="acc-card" onclick='openVmView(${jsq(a.id)})'>
+      <div class="acc-top">
+        <div class="acc-name">${esc(a.name)}</div>
+        ${a.expirationDate ? `<span class="badge bg-err">订阅到期 ${esc(a.expirationDate)}</span>` : `<span class="badge bg-inf">就绪</span>`}
+      </div>
+      <div class="acc-meta">
+        <div class="meta-row"><span class="meta-k">邮箱</span><span class="meta-v">${esc(a.email || '未设置')}</span></div>
+        <div class="meta-row"><span class="meta-k">到期日</span><span class="meta-v">${esc(formatExpiry(a.expirationDate))}</span></div>
+        <div class="meta-row"><span class="meta-k">机器数</span><span class="meta-v">${esc(vmText)}</span></div>
+        <div class="meta-row"><span class="meta-k">订阅</span><span class="meta-v">${esc(subName)}${state && state !== '-' ? ` · ${esc(state)}` : ''}</span></div>
+      </div>
+      <div class="acc-foot">
+        <button class="btn btn-s btn-sm" onclick='openEditAccount(${jsq(a.id)}, event)'>编辑</button>
+        <button class="btn btn-p btn-sm" onclick='openVmView(${jsq(a.id)}, event)'>打开 →</button>
+      </div>
+    </div>`;
+}
+
+function paintAccGrid() {
   const g = $('acc-grid');
+  if (!g) return;
   if (!S.accounts.length) {
     g.innerHTML = `
       <div class="empty" style="grid-column:1/-1">
@@ -146,24 +180,42 @@ function renderAccGrid() {
       </div>`;
     return;
   }
+  g.innerHTML = S.accounts.map(accountCardHtml).join('');
+}
 
-  g.innerHTML = S.accounts.map(a => `
-    <div class="acc-card" onclick='openVmView(${jsq(a.id)})'>
-      <div class="acc-top">
-        <div class="acc-name">${esc(a.name)}</div>
-        ${a.expirationDate ? `<span class="badge bg-err">订阅到期 ${esc(a.expirationDate)}</span>` : `<span class="badge bg-inf">就绪</span>`}
-      </div>
-      <div class="acc-meta">
-        <div class="meta-row"><span class="meta-k">订阅 ID</span><span class="meta-v">${esc(a.subscriptionId)}</span></div>
-        <div class="meta-row"><span class="meta-k">应用 ID</span><span class="meta-v">${esc(shortId(a.clientId))}</span></div>
-        <div class="meta-row"><span class="meta-k">租户 ID</span><span class="meta-v">${esc(shortId(a.tenantId))}</span></div>
-      </div>
-      <div class="acc-foot">
-        <span class="muted small">点击进入工作台</span>
-        <button class="btn btn-p btn-sm" onclick='openVmView(${jsq(a.id)}, event)'>打开 →</button>
-      </div>
-    </div>
-  `).join('');
+function renderAccGrid() {
+  paintAccGrid();
+  S.accounts.forEach(a => loadAccountStats(a.id));
+}
+
+async function loadAccountStats(accountId, { force = false } = {}) {
+  if (!accountId) return;
+  const prev = S.accountStats[accountId];
+  if (prev?.loading) return;
+  if (!force && prev && !prev.error && typeof prev.vmCount === 'number') return;
+  S.accountStats[accountId] = { ...(prev || {}), loading: true, error: null };
+  paintAccGrid();
+  try {
+    const d = await api('GET', `/api/accounts/${accountId}/overview`);
+    S.accountStats[accountId] = {
+      loading: false,
+      error: null,
+      vmCount: d.vmCount ?? 0,
+      subscriptionDisplayName: d.subscriptionDisplayName || '',
+      state: d.state || '',
+    };
+  } catch (e) {
+    S.accountStats[accountId] = {
+      loading: false,
+      error: e.message || 'failed',
+      vmCount: prev?.vmCount,
+      subscriptionDisplayName: prev?.subscriptionDisplayName,
+      state: prev?.state,
+    };
+  }
+  if (S.activePage === 'accounts' && !$('view-acc-list')?.classList.contains('hidden')) {
+    paintAccGrid();
+  }
 }
 
 async function openVmView(accId, e) {
@@ -178,7 +230,8 @@ async function openVmView(accId, e) {
 
   const acc = S.accounts.find(a => a.id === accId);
   $('vm-acc-title').textContent = acc?.name || '-';
-  $('vm-acc-sub').textContent = acc?.subscriptionId || '';
+  const bits = [acc?.email, acc?.expirationDate ? `到期 ${acc.expirationDate}` : null].filter(Boolean);
+  $('vm-acc-sub').textContent = bits.join(' · ') || 'Azure 订阅';
   $('view-acc-list').classList.add('hidden');
   $('view-vms').classList.remove('hidden');
 
@@ -478,13 +531,44 @@ function setAddMode(mode) {
   $('add-mode-json').classList.toggle('hidden', !isJson);
 }
 
+function currentAddCredentialKey() {
+  return [
+    $('add-cid')?.value.trim() || '',
+    $('add-sec')?.value.trim() || '',
+    $('add-tid')?.value.trim() || '',
+    $('add-sid')?.value.trim() || '',
+  ].join('|');
+}
+
+function setAddSaveEnabled(enabled) {
+  const btn = $('btn-save-add');
+  if (btn) btn.disabled = !enabled;
+  const hint = $('add-save-hint');
+  if (hint) {
+    hint.textContent = enabled
+      ? '凭据已验证，可以保存账户。保存后可设置订阅到期日。'
+      : '请先验证凭据，通过后才能保存账户。订阅到期日将在保存后设置。';
+  }
+}
+
+function invalidateAddVerification() {
+  if (!S.addVerifiedKey) return;
+  if (S.addVerifiedKey !== currentAddCredentialKey()) {
+    S.addVerifiedKey = null;
+    setAddSaveEnabled(false);
+  }
+}
+
 function resetAddForm() {
-  ['add-name', 'add-cid', 'add-tid', 'add-sec', 'add-sid', 'add-json'].forEach(id => { $(id).value = ''; });
-  $('add-exp').value = '';
+  ['add-name', 'add-cid', 'add-tid', 'add-sec', 'add-sid', 'add-json'].forEach(id => {
+    if ($(id)) $(id).value = '';
+  });
   $('add-check-result').className = 'hidden';
   $('add-check-result').textContent = '';
   $('add-json-result').className = 'hidden';
   $('add-json-result').textContent = '';
+  S.addVerifiedKey = null;
+  setAddSaveEnabled(false);
   setAddMode('manual');
 }
 
@@ -573,9 +657,11 @@ function applyParsedCredentials(parsed, { silent = false } = {}) {
     : '已解析并填充表单字段，可直接验证或保存。';
   res.classList.remove('hidden');
 
+  S.addVerifiedKey = null;
+  setAddSaveEnabled(false);
   if (!silent) {
     setAddMode('manual');
-    toast(missingSub ? '已填充，请补全订阅 ID' : 'JSON 已填充到表单', missingSub ? 'info' : 'success');
+    toast(missingSub ? '已填充，请补全订阅 ID' : 'JSON 已填充到表单，请先验证凭据', missingSub ? 'info' : 'success');
   }
   return !missingSub;
 }
@@ -619,19 +705,30 @@ async function checkAddAccount() {
     btn.disabled = true;
     btn.textContent = '验证中...';
   }
+  S.addVerifiedKey = null;
+  setAddSaveEnabled(false);
   try {
     ensureCredentialsFromJsonIfNeeded();
-    const d = await api('POST', '/api/accounts/check', {
+    const payload = {
       clientId: $('add-cid').value.trim(),
       clientSecret: $('add-sec').value.trim(),
       tenantId: $('add-tid').value.trim(),
       subscriptionId: $('add-sid').value.trim(),
-    });
+    };
+    const d = await api('POST', '/api/accounts/check', payload);
+    S.addVerifiedKey = currentAddCredentialKey();
+    setAddSaveEnabled(true);
     if (res) {
       res.className = 'ok-box';
       res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
     }
+    // Prefer Azure subscription display name when user left name empty.
+    if (!$('add-name').value.trim() && d.subscriptionDisplayName) {
+      $('add-name').value = d.subscriptionDisplayName;
+    }
   } catch (e) {
+    S.addVerifiedKey = null;
+    setAddSaveEnabled(false);
     if (res) {
       res.className = 'err-box';
       res.textContent = `验证失败：${e.message}`;
@@ -645,61 +742,116 @@ async function checkAddAccount() {
   }
 }
 
+function openPostAddExpiryModal(account) {
+  S.pendingNewAccountId = account.id;
+  if ($('post-add-id')) $('post-add-id').value = account.id;
+  if ($('post-add-name')) $('post-add-name').textContent = account.name || '-';
+  if ($('post-add-exp')) $('post-add-exp').value = '';
+  openModal('mo-add-expiry');
+}
+
+async function finishPostAddFlow() {
+  closeModal('mo-add-expiry');
+  S.pendingNewAccountId = null;
+  S.accounts = await api('GET', '/api/accounts');
+  S.selectedAccId = null;
+  api('DELETE', '/api/session').catch(() => {});
+  refreshOverview();
+  switchPage('accounts');
+  showAccountListView();
+}
+
+async function savePostAddExpiry() {
+  const accountId = $('post-add-id')?.value || S.pendingNewAccountId;
+  if (!accountId) return finishPostAddFlow();
+  const acc = S.accounts.find(a => a.id === accountId);
+  const exp = $('post-add-exp')?.value || null;
+  try {
+    await api('POST', '/api/accounts/edit', {
+      accountId,
+      newName: acc?.name || $('post-add-name')?.textContent || 'Azure Account',
+      email: acc?.email || null,
+      expirationDate: exp,
+    });
+    toast(exp ? '订阅到期日已保存' : '已跳过到期日', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+  await finishPostAddFlow();
+}
+
 async function saveAddAccount() {
+  if (S.addVerifiedKey !== currentAddCredentialKey()) {
+    toast('请先验证凭据并通过后再保存', 'error');
+    setAddSaveEnabled(false);
+    return;
+  }
   const btn = $('btn-save-add');
   if (btn) btn.disabled = true;
   try {
     ensureCredentialsFromJsonIfNeeded();
     const name = $('add-name').value.trim() || $('add-cid').value.trim().slice(0, 8) || 'Azure Account';
-    await api('POST', '/api/accounts', {
+    const created = await api('POST', '/api/accounts', {
       name,
       clientId: $('add-cid').value.trim(),
       clientSecret: $('add-sec').value.trim(),
       tenantId: $('add-tid').value.trim(),
       subscriptionId: $('add-sid').value.trim(),
-      expirationDate: $('add-exp').value || null,
+      expirationDate: null,
     });
     toast('账户已添加', 'success');
     closeModal('mo-add-acc');
-    resetAddForm();
+    const createdAccount = created?.id ? created : { id: created?.id, name };
+    // Refresh list cache before expiry modal edit.
     S.accounts = await api('GET', '/api/accounts');
-    // Always land on the account list after create, even if a workspace was open.
-    S.selectedAccId = null;
-    api('DELETE', '/api/session').catch(() => {});
-    refreshOverview();
-    switchPage('accounts');
-    showAccountListView();
+    resetAddForm();
+    openPostAddExpiryModal(S.accounts.find(a => a.id === created.id) || { id: created.id, name });
   } catch (e) {
     toast(e.message, 'error');
+    setAddSaveEnabled(true);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn && S.addVerifiedKey === currentAddCredentialKey()) btn.disabled = false;
   }
 }
 
 // ── edit / delete account ─────────────────────────────────────
-function openEditAccount() {
-  const acc = S.accounts.find(a => a.id === S.selectedAccId);
-  if (!acc) return;
+function openEditAccount(accountId, e) {
+  if (e) e.stopPropagation();
+  const id = accountId || S.selectedAccId;
+  const acc = S.accounts.find(a => a.id === id);
+  if (!acc) {
+    toast('未找到账户', 'error');
+    return;
+  }
   $('edit-acc-id').value = acc.id;
-  $('edit-acc-name').value = acc.name;
+  $('edit-acc-name').value = acc.name || '';
+  if ($('edit-acc-email')) $('edit-acc-email').value = acc.email || '';
   $('edit-acc-exp').value = acc.expirationDate || '';
   openModal('mo-edit-acc');
 }
+window.openEditAccount = openEditAccount;
 
 async function saveEditAccount() {
   const btn = $('btn-save-edit-acc');
   if (btn) btn.disabled = true;
   try {
+    const accountId = $('edit-acc-id').value;
     await api('POST', '/api/accounts/edit', {
-      accountId: $('edit-acc-id').value,
+      accountId,
       newName: $('edit-acc-name').value.trim(),
+      email: $('edit-acc-email')?.value.trim() || null,
       expirationDate: $('edit-acc-exp').value || null,
     });
     closeModal('mo-edit-acc');
     S.accounts = await api('GET', '/api/accounts');
-    const acc = S.accounts.find(a => a.id === S.selectedAccId);
-    if (acc) $('vm-acc-title').textContent = acc.name;
+    const acc = S.accounts.find(a => a.id === S.selectedAccId) || S.accounts.find(a => a.id === accountId);
+    if (acc && S.selectedAccId === acc.id) {
+      $('vm-acc-title').textContent = acc.name;
+      const bits = [acc.email, acc.expirationDate ? `到期 ${acc.expirationDate}` : null].filter(Boolean);
+      if ($('vm-acc-sub')) $('vm-acc-sub').textContent = bits.join(' · ') || 'Azure 订阅';
+    }
     refreshOverview();
+    if (!$('view-acc-list')?.classList.contains('hidden')) renderAccGrid();
     toast('账户已更新', 'success');
   } catch (e) {
     toast(e.message, 'error');
@@ -793,11 +945,14 @@ function bindUI() {
 
     const closer = t.closest('[data-close]');
     if (closer) {
-      closeModal(closer.getAttribute('data-close'));
+      const modalId = closer.getAttribute('data-close');
+      closeModal(modalId);
+      if (modalId === 'mo-add-expiry' && S.pendingNewAccountId) finishPostAddFlow();
       return;
     }
     if (t.classList.contains('mo')) {
       closeModal(t.id);
+      if (t.id === 'mo-add-expiry' && S.pendingNewAccountId) finishPostAddFlow();
       return;
     }
 
@@ -840,15 +995,22 @@ function bindUI() {
     if (t.closest('#btn-parse-json')) return void parseJsonFromForm();
     if (t.closest('#btn-check-add')) return void checkAddAccount();
     if (t.closest('#btn-save-add')) return void saveAddAccount();
-    if (t.closest('#btn-edit-acc')) return void openEditAccount();
+    if (t.closest('#btn-edit-acc')) return void openEditAccount(S.selectedAccId, e);
     if (t.closest('#btn-save-edit-acc')) return void saveEditAccount();
     if (t.closest('#btn-del-acc')) return void deleteSelectedAccount();
     if (t.closest('#btn-save-script')) return void saveStartupScript();
     if (t.closest('#btn-cf')) return void confirmPendingAction();
+    if (t.closest('#btn-skip-expiry')) return void finishPostAddFlow();
+    if (t.closest('#btn-save-expiry')) return void savePostAddExpiry();
   });
 
   on('login-pw', 'keydown', (e) => {
     if (e.key === 'Enter') doLogin();
+  });
+
+  // Invalidate verification when credentials change.
+  ['add-cid', 'add-sec', 'add-tid', 'add-sid', 'add-json'].forEach((id) => {
+    on(id, 'input', invalidateAddVerification);
   });
 }
 
