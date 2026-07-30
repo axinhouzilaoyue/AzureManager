@@ -890,30 +890,45 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
           <input class="fi mono" type="password" id="add-sec" placeholder="JSON 中的 password，或门户新建密钥的 Value" autocomplete="new-password" />
         </div>
 
-        <div class="frow">
-          <div class="fg">
-            <label class="fl" for="add-sid">
-              <span class="fl-title">订阅 ID</span>
-              <span class="fl-azure">subscriptionId</span>
-            </label>
-            <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
-          </div>
-          <div class="fg">
-            <label class="fl" for="add-exp">
-              <span class="fl-title">订阅到期日（可选）</span>
-              <span class="fl-azure">仅提醒，不影响鉴权</span>
-            </label>
-            <input class="fi" type="date" id="add-exp" />
-          </div>
+        <div class="fg">
+          <label class="fl" for="add-sid">
+            <span class="fl-title">订阅 ID</span>
+            <span class="fl-azure">subscriptionId</span>
+          </label>
+          <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
         </div>
       </div>
 
       <div id="add-check-result" class="hidden"></div>
+      <div class="fhint" id="add-save-hint">请先验证凭据，通过后才能保存账户。订阅到期日将在保存后设置。</div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" type="button" data-close="mo-add-acc">取消</button>
       <button class="btn btn-s" type="button" id="btn-check-add">验证凭据</button>
-      <button class="btn btn-p" type="button" id="btn-save-add">保存账户</button>
+      <button class="btn btn-p" type="button" id="btn-save-add" disabled>保存账户</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: 保存后设置订阅到期日 -->
+<div id="mo-add-expiry" class="mo hidden">
+  <div class="md md-sm">
+    <div class="md-h">
+      <span class="md-ttl">设置订阅到期日</span>
+      <button class="md-x" data-close="mo-add-expiry" type="button">×</button>
+    </div>
+    <div class="md-b">
+      <input type="hidden" id="post-add-id" />
+      <p class="muted" style="font-size:13px;line-height:1.6">账户 <strong id="post-add-name">-</strong> 已保存。可设置订阅到期提醒，也可跳过。</p>
+      <div class="fg">
+        <label class="fl" for="post-add-exp"><span class="fl-title">订阅到期日</span></label>
+        <input class="fi" type="date" id="post-add-exp" />
+        <div class="fhint">仅用于面板提醒，不影响 Azure 鉴权。</div>
+      </div>
+    </div>
+    <div class="md-f">
+      <button class="btn btn-g" type="button" id="btn-skip-expiry">跳过</button>
+      <button class="btn btn-p" type="button" id="btn-save-expiry">保存到期日</button>
     </div>
   </div>
 </div>
@@ -1028,6 +1043,10 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
         <input class="fi" type="text" id="edit-acc-name" />
       </div>
       <div class="fg">
+        <label class="fl" for="edit-acc-email"><span class="fl-title">邮箱（可选）</span></label>
+        <input class="fi" type="email" id="edit-acc-email" placeholder="用于识别该 Azure 账户的邮箱" />
+      </div>
+      <div class="fg">
         <label class="fl" for="edit-acc-exp"><span class="fl-title">订阅到期日（可选）</span></label>
         <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" />
       </div>
@@ -1039,6 +1058,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<script src="/app.js?v=20260730"></script>
+<script src="/app.js?v=20260730b"></script>
 </body>
 </html>

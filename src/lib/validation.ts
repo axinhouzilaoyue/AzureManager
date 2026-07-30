@@ -4,20 +4,24 @@ export const loginSchema = z.object({
   password: z.string().min(1, "密码不能为空"),
 });
 
+const optionalDate = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式无效").nullable().optional(),
+);
+
+const optionalEmail = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().email("邮箱格式无效").max(200, "邮箱过长").nullable().optional(),
+);
+
 export const createAccountSchema = z.object({
   name: z.string().trim().min(1, "账户名称不能为空").max(120, "账户名称过长"),
   clientId: z.string().trim().uuid("客户端 ID 格式无效"),
   clientSecret: z.string().trim().min(1, "客户端密码不能为空"),
   tenantId: z.string().trim().uuid("租户 ID 格式无效"),
   subscriptionId: z.string().trim().uuid("订阅 ID 格式无效"),
-  expirationDate: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
+  email: optionalEmail,
+  expirationDate: optionalDate,
 });
 
 export const accountCheckSchema = z.object({
@@ -30,14 +34,8 @@ export const accountCheckSchema = z.object({
 export const editAccountSchema = z.object({
   accountId: z.string().uuid("账户 ID 格式无效"),
   newName: z.string().trim().min(1, "新的账户名称不能为空").max(120, "账户名称过长"),
-  expirationDate: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
+  email: optionalEmail,
+  expirationDate: optionalDate,
 });
 
 export const selectAccountSchema = z.object({

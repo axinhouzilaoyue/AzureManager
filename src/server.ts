@@ -203,6 +203,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         clientSecret: body.clientSecret,
         tenantId: body.tenantId,
         subscriptionId: body.subscriptionId,
+        email: null,
         expirationDate: null,
         createdAt: "",
         updatedAt: "",
@@ -221,7 +222,16 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const body = await parseBody(req, createAccountSchema);
     if (body instanceof Response) return body;
     if (await accountNameExists(ENV, body.name)) return errorResponse(409, "账户名称已存在");
-    const created = await createAccount(ENV, { id: crypto.randomUUID(), ...body });
+    const created = await createAccount(ENV, {
+      id: crypto.randomUUID(),
+      name: body.name,
+      clientId: body.clientId,
+      clientSecret: body.clientSecret,
+      tenantId: body.tenantId,
+      subscriptionId: body.subscriptionId,
+      email: body.email ?? null,
+      expirationDate: body.expirationDate ?? null,
+    });
     return jsonResponse(created, { status: 201 });
   }
 
@@ -231,12 +241,40 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (body instanceof Response) return body;
     if (!(await getAccountById(ENV, body.accountId))) return errorResponse(404, "账户未找到");
     if (await accountNameExists(ENV, body.newName, body.accountId)) return errorResponse(409, "新的账户名称已存在");
-    await updateAccountMetadata(ENV, { accountId: body.accountId, newName: body.newName, expirationDate: body.expirationDate ?? null });
+    await updateAccountMetadata(ENV, {
+      accountId: body.accountId,
+      newName: body.newName,
+      email: body.email ?? null,
+      expirationDate: body.expirationDate ?? null,
+    });
     let headers: HeadersInit | undefined;
     if (auth.session.selectedAccountId === body.accountId) {
       headers = { "Set-Cookie": await createSelectionCookie(ENV, req, body.accountId) };
     }
     return jsonResponse({ success: true }, { headers });
+  }
+
+  // account overview (subscription label + vm count) without changing selected session
+  const overviewMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/overview$/)
+    : null;
+  if (overviewMatch) {
+    try {
+      const account = await getDecryptedAccountOrThrow(ENV, overviewMatch[1]);
+      const client = new AzureArmClient(ENV, account);
+      const [sub, vms] = await Promise.all([
+        getSubscriptionDetails(client, account.subscriptionId),
+        listVirtualMachines(client, account.subscriptionId),
+      ]);
+      return jsonResponse({
+        id: account.id,
+        subscriptionDisplayName: sub.displayName,
+        state: sub.state,
+        vmCount: vms.length,
+      });
+    } catch (error) {
+      return errorResponse(400, formatAzureError(error));
+    }
   }
 
   // check existing account

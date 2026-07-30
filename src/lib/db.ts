@@ -17,6 +17,7 @@ import { nowIso, parseJsonOrNull } from "./utils";
 interface AccountRow {
   id: string; name: string; client_id: string; tenant_id: string;
   subscription_id: string; client_secret_ciphertext: string;
+  email: string | null;
   expiration_date: string | null; created_at: string; updated_at: string;
 }
 interface TaskRow {
@@ -32,10 +33,31 @@ interface TaskLogRow {
 }
 
 function mapAccountRow(r: AccountRow): AccountRecord {
-  return { id: r.id, name: r.name, clientId: r.client_id, tenantId: r.tenant_id, subscriptionId: r.subscription_id, clientSecretCiphertext: r.client_secret_ciphertext, expirationDate: r.expiration_date, createdAt: r.created_at, updatedAt: r.updated_at };
+  return {
+    id: r.id,
+    name: r.name,
+    clientId: r.client_id,
+    tenantId: r.tenant_id,
+    subscriptionId: r.subscription_id,
+    clientSecretCiphertext: r.client_secret_ciphertext,
+    email: r.email ?? null,
+    expirationDate: r.expiration_date,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 function toSummary(a: AccountRecord): AccountSummary {
-  return { id: a.id, name: a.name, clientId: a.clientId, tenantId: a.tenantId, subscriptionId: a.subscriptionId, expirationDate: a.expirationDate, createdAt: a.createdAt, updatedAt: a.updatedAt };
+  return {
+    id: a.id,
+    name: a.name,
+    clientId: a.clientId,
+    tenantId: a.tenantId,
+    subscriptionId: a.subscriptionId,
+    email: a.email,
+    expirationDate: a.expirationDate,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  };
 }
 function mapTaskRow(r: TaskRow): TaskRecord {
   return { id: r.id, accountId: r.account_id, type: r.type, status: r.status, lockKey: r.lock_key, message: r.message, resultJson: r.result_json, errorCode: r.error_code, errorMessage: r.error_message, idempotencyKey: r.idempotency_key, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at, startedAt: r.started_at, completedAt: r.completed_at };
@@ -52,7 +74,7 @@ export function initializeDatabase(db: Database): void {
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, client_id TEXT NOT NULL,
       tenant_id TEXT NOT NULL, subscription_id TEXT NOT NULL,
-      client_secret_ciphertext TEXT NOT NULL, expiration_date TEXT,
+      client_secret_ciphertext TEXT NOT NULL, email TEXT, expiration_date TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_accounts_subscription_id ON accounts(subscription_id);
@@ -77,21 +99,24 @@ export function initializeDatabase(db: Database): void {
       key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT
     );
   `);
+
+  // Lightweight migration for existing local DBs.
+  const accountCols = db.prepare(`PRAGMA table_info(accounts)`).all() as Array<{ name: string }>;
+  if (!accountCols.some((col) => col.name === "email")) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN email TEXT`);
+  }
 }
 
+const ACCOUNT_SELECT = `SELECT id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext,
+  email, expiration_date, created_at, updated_at FROM accounts`;
+
 export async function listAccounts(env: AppEnv): Promise<AccountSummary[]> {
-  const rows = env.DB.prepare(
-    `SELECT id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext, expiration_date, created_at, updated_at
-     FROM accounts ORDER BY name ASC`
-  ).all() as AccountRow[];
+  const rows = env.DB.prepare(`${ACCOUNT_SELECT} ORDER BY name ASC`).all() as AccountRow[];
   return rows.map((r) => toSummary(mapAccountRow(r)));
 }
 
 export async function getAccountById(env: AppEnv, accountId: string): Promise<AccountRecord | null> {
-  const row = env.DB.prepare(
-    `SELECT id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext, expiration_date, created_at, updated_at
-     FROM accounts WHERE id = ?`
-  ).get(accountId) as AccountRow | null;
+  const row = env.DB.prepare(`${ACCOUNT_SELECT} WHERE id = ?`).get(accountId) as AccountRow | null;
   return row ? mapAccountRow(row) : null;
 }
 
@@ -102,28 +127,45 @@ export async function getDecryptedAccountById(env: AppEnv, accountId: string): P
     id: account.id, name: account.name, clientId: account.clientId,
     tenantId: account.tenantId, subscriptionId: account.subscriptionId,
     clientSecret: await decryptString(env.ACCOUNT_ENCRYPTION_KEY, account.clientSecretCiphertext),
+    email: account.email,
     expirationDate: account.expirationDate, createdAt: account.createdAt, updatedAt: account.updatedAt,
   };
 }
 
 export async function createAccount(env: AppEnv, input: {
   id: string; name: string; clientId: string; tenantId: string;
-  subscriptionId: string; clientSecret: string; expirationDate: string | null;
+  subscriptionId: string; clientSecret: string; email?: string | null; expirationDate: string | null;
 }): Promise<AccountSummary> {
   const timestamp = nowIso();
+  const email = input.email ?? null;
   const ciphertext = await encryptString(env.ACCOUNT_ENCRYPTION_KEY, input.clientSecret);
   env.DB.prepare(
-    `INSERT INTO accounts (id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext, expiration_date, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(input.id, input.name, input.clientId, input.tenantId, input.subscriptionId, ciphertext, input.expirationDate, timestamp, timestamp);
-  return { id: input.id, name: input.name, clientId: input.clientId, tenantId: input.tenantId, subscriptionId: input.subscriptionId, expirationDate: input.expirationDate, createdAt: timestamp, updatedAt: timestamp };
+    `INSERT INTO accounts (id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext, email, expiration_date, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(input.id, input.name, input.clientId, input.tenantId, input.subscriptionId, ciphertext, email, input.expirationDate, timestamp, timestamp);
+  return {
+    id: input.id,
+    name: input.name,
+    clientId: input.clientId,
+    tenantId: input.tenantId,
+    subscriptionId: input.subscriptionId,
+    email,
+    expirationDate: input.expirationDate,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 export async function updateAccountMetadata(env: AppEnv, input: {
-  accountId: string; newName: string; expirationDate: string | null;
+  accountId: string; newName: string; email?: string | null; expirationDate: string | null;
 }): Promise<void> {
-  env.DB.prepare(`UPDATE accounts SET name = ?, expiration_date = ?, updated_at = ? WHERE id = ?`)
-    .run(input.newName, input.expirationDate, nowIso(), input.accountId);
+  if (input.email === undefined) {
+    env.DB.prepare(`UPDATE accounts SET name = ?, expiration_date = ?, updated_at = ? WHERE id = ?`)
+      .run(input.newName, input.expirationDate, nowIso(), input.accountId);
+    return;
+  }
+  env.DB.prepare(`UPDATE accounts SET name = ?, email = ?, expiration_date = ?, updated_at = ? WHERE id = ?`)
+    .run(input.newName, input.email, input.expirationDate, nowIso(), input.accountId);
 }
 
 export async function deleteAccount(env: AppEnv, accountId: string): Promise<void> {
