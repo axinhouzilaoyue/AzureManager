@@ -157,4 +157,6 @@ export interface AzureVmSummary {
   resourceGroup: string;
   publicIp: string;
   timeCreated: string | null;
+  /** Approximate running age in whole days; null if unknown / not running. */
+  uptimeDays: number | null;
 }
