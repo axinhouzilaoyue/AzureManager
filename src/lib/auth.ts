@@ -105,7 +105,7 @@ export async function createSelectionCookie(
   };
   const encoded = await encodeSession(env, nextState);
   return createCookie(SESSION_COOKIE, encoded, {
-    maxAge: existing.localAuthExp && existing.localAuthExp > Date.now() ? getSessionTtlSeconds(env) : getSessionTtlSeconds(env),
+    maxAge: getSessionTtlSeconds(env),
   });
 }
 

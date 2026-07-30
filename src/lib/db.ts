@@ -159,7 +159,7 @@ export async function createTask(env: AppEnv, input: {
     `INSERT INTO tasks (id, account_id, type, status, lock_key, message,
       result_json, error_code, error_message, idempotency_key, created_by, created_at, updated_at, started_at, completed_at)
      VALUES (?, ?, ?, 'queued', ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL)`
-  ).run(input.id, input.accountId, input.type, input.lockKey, input.message, crypto.randomUUID(), input.createdBy, timestamp, timestamp);
+  ).run(input.id, input.accountId, input.type, input.lockKey, input.message, input.id, input.createdBy, timestamp, timestamp);
 }
 
 export async function markTaskRunning(env: AppEnv, taskId: string, message: string): Promise<void> {
@@ -199,6 +199,34 @@ export async function appendTaskLog(env: AppEnv, taskId: string, input: {
     input.detail === undefined || input.detail === null ? null : JSON.stringify(input.detail),
     nowIso()
   );
+}
+
+export async function listTasksForAccount(env: AppEnv, accountId: string, limit = 50): Promise<Array<{
+  id: string;
+  type: string;
+  status: TaskStatus;
+  message: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}>> {
+  const rows = env.DB.prepare(
+    `SELECT id, account_id, type, status, lock_key, message, result_json,
+            error_code, error_message, idempotency_key, created_by, created_at, updated_at, started_at, completed_at
+     FROM tasks WHERE account_id = ? ORDER BY created_at DESC LIMIT ?`
+  ).all(accountId, limit) as TaskRow[];
+  return rows.map((r) => {
+    const task = mapTaskRow(r);
+    return {
+      id: task.id,
+      type: task.type,
+      status: task.status,
+      message: task.message,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      completedAt: task.completedAt,
+    };
+  });
 }
 
 export async function getTaskResponse(env: AppEnv, taskId: string): Promise<TaskResponse | null> {
