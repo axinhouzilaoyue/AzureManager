@@ -88,7 +88,13 @@ async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T | Respo
 }
 
 function serveFile(path: string, contentType: string): Response {
-  return new Response(Bun.file(path), { headers: { "content-type": contentType } });
+  return new Response(Bun.file(path), {
+    headers: {
+      "content-type": contentType,
+      // Avoid sticky cached UI/JS after deploys.
+      "cache-control": "no-store, max-age=0",
+    },
+  });
 }
 
 function formatAzureError(error: unknown): string {

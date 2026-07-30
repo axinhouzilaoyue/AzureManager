@@ -155,14 +155,17 @@
     }
 
     /* ── App shell ───────────────────────────────── */
+    #login-screen.hidden { display: none !important; }
     #app { display: none; height: 100vh; overflow: hidden; }
-    .app-body { display: flex; height: 100vh; overflow: hidden; }
+    #app.is-on { display: block; }
+    .app-body { display: flex; height: 100vh; overflow: hidden; position: relative; }
 
     .sidebar {
       width: var(--sw); flex-shrink: 0; height: 100vh;
       display: flex; flex-direction: column; position: relative;
       background: var(--bg-card); border-right: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-      transition: width var(--t); z-index: 20;
+      transition: width var(--t); z-index: 40;
+      overflow: visible;
     }
     .sidebar.col { width: var(--scw); }
     .sidebar-inner { flex: 1; display: flex; flex-direction: column; overflow: auto; scrollbar-width: none; }
@@ -173,7 +176,8 @@
       width: 24px; height: 48px; border-radius: 14px;
       border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
       background: var(--bg-card); color: var(--text-2);
-      display: grid; place-items: center; box-shadow: 4px 0 14px rgb(0 0 0 / 0.08); z-index: 30;
+      display: grid; place-items: center; box-shadow: 4px 0 14px rgb(0 0 0 / 0.08);
+      z-index: 60; pointer-events: auto;
     }
     .sbtoggle:hover { color: var(--text); background: color-mix(in srgb, var(--bg-card) 90%, var(--text) 6%); }
     .sbtoggle svg { width: 14px; height: 14px; transition: transform var(--t); }
@@ -229,8 +233,9 @@
     .sidebar.col .ni { justify-content: center; padding: 10px 0; }
     .sidebar.col .ni-ico { width: 32px; height: 32px; }
 
-    .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; }
+    .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; position: relative; z-index: 1; }
     .page { padding: 28px clamp(18px, 3vw, 40px) 40px; max-width: 1180px; }
+    .page.hidden { display: none !important; }
 
     .page-head {
       display: flex; align-items: flex-start; justify-content: space-between;
@@ -895,7 +900,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
           </div>
           <div class="fg">
             <label class="fl" for="add-exp">
-              <span class="fl-title">密钥到期日（可选）</span>
+              <span class="fl-title">订阅到期日（可选）</span>
               <span class="fl-azure">仅提醒，不影响鉴权</span>
             </label>
             <input class="fi" type="date" id="add-exp" />
@@ -1023,7 +1028,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
         <input class="fi" type="text" id="edit-acc-name" />
       </div>
       <div class="fg">
-        <label class="fl" for="edit-acc-exp"><span class="fl-title">密钥到期日（可选）</span></label>
+        <label class="fl" for="edit-acc-exp"><span class="fl-title">订阅到期日（可选）</span></label>
         <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" />
       </div>
     </div>
@@ -1034,6 +1039,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="/app.js?v=20260730"></script>
 </body>
 </html>

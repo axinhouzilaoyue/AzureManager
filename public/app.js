@@ -28,22 +28,27 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 // Safe JS string literal for inline handlers (avoids HTML-escaping breaking API values).
 const jsq = v => JSON.stringify(String(v ?? ''));
 
+function on(id, event, handler) {
+  const el = $(id);
+  if (!el) {
+    console.warn(`[ui] missing #${id}, skip ${event} binding`);
+    return;
+  }
+  el.addEventListener(event, handler);
+}
+
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast${type === 'success' ? ' t-ok' : type === 'error' ? ' t-err' : ''}`;
   el.textContent = msg;
-  $('tc').appendChild(el);
+  const host = $('tc');
+  if (!host) return;
+  host.appendChild(el);
   setTimeout(() => el.remove(), 3500);
 }
 
-const openModal  = id => $(id).classList.remove('hidden');
-const closeModal = id => $(id).classList.add('hidden');
-
-document.addEventListener('click', e => {
-  const b = e.target.closest('[data-close]');
-  if (b) closeModal(b.dataset.close);
-  if (e.target.classList.contains('mo')) closeModal(e.target.id);
-});
+const openModal  = id => $(id)?.classList.remove('hidden');
+const closeModal = id => $(id)?.classList.add('hidden');
 
 function badge(status) {
   const m = { success:'bg-ok', failure:'bg-err', running:'bg-run', queued:'bg-inf' };
@@ -77,35 +82,26 @@ window.copyText = copyText;
 const PAGES = ['overview', 'accounts', 'settings'];
 
 function switchPage(page) {
+  if (!PAGES.includes(page)) return;
   S.activePage = page;
   PAGES.forEach(p => {
-    $(`pg-${p}`).classList.toggle('hidden', p !== page);
-    const ni = $(`ni-${p}`);
-    if (ni) ni.classList.toggle('active', p === page);
+    $(`pg-${p}`)?.classList.toggle('hidden', p !== page);
+    $(`ni-${p}`)?.classList.toggle('active', p === page);
   });
-  if (page === 'overview') refreshOverview();
-  if (page === 'accounts') showAccList();
-  if (page === 'settings') loadStartupScript();
+  try {
+    if (page === 'overview') refreshOverview();
+    if (page === 'accounts') showAccList();
+    if (page === 'settings') loadStartupScript();
+  } catch (err) {
+    console.error('[ui] switchPage side effects failed', page, err);
+  }
 }
 window.switchPage = switchPage;
-
-document.querySelectorAll('.ni[data-page]').forEach(el => {
-  el.addEventListener('click', () => switchPage(el.dataset.page));
-});
-
-$('sbtoggle').addEventListener('click', () => {
-  $('sidebar').classList.toggle('col');
-});
 
 function openAzureGuide() {
   openModal('mo-azure-guide');
 }
 window.openAzureGuide = openAzureGuide;
-
-$('btn-guide-to-add').addEventListener('click', () => {
-  closeModal('mo-azure-guide');
-  openAddAccount();
-});
 
 // ── overview ──────────────────────────────────────────────────
 function refreshOverview() {
@@ -155,7 +151,7 @@ function renderAccGrid() {
     <div class="acc-card" onclick='openVmView(${jsq(a.id)})'>
       <div class="acc-top">
         <div class="acc-name">${esc(a.name)}</div>
-        ${a.expirationDate ? `<span class="badge bg-err">到期 ${esc(a.expirationDate)}</span>` : `<span class="badge bg-inf">就绪</span>`}
+        ${a.expirationDate ? `<span class="badge bg-err">订阅到期 ${esc(a.expirationDate)}</span>` : `<span class="badge bg-inf">就绪</span>`}
       </div>
       <div class="acc-meta">
         <div class="meta-row"><span class="meta-k">订阅 ID</span><span class="meta-v">${esc(a.subscriptionId)}</span></div>
@@ -200,14 +196,14 @@ async function openVmView(accId, e) {
 }
 window.openVmView = openVmView;
 
-$('btn-back-accounts').addEventListener('click', () => {
+function backToAccountList() {
   S.selectedAccId = null;
   api('DELETE', '/api/session').catch(() => {});
   refreshOverview();
-  $('view-acc-list').classList.remove('hidden');
-  $('view-vms').classList.add('hidden');
+  $('view-acc-list')?.classList.remove('hidden');
+  $('view-vms')?.classList.add('hidden');
   renderAccGrid();
-});
+}
 
 // ── VMs ───────────────────────────────────────────────────────
 async function loadVms() {
@@ -297,7 +293,7 @@ function changeIp(rg, vm) {
 }
 window.changeIp = changeIp;
 
-$('btn-cf').addEventListener('click', async () => {
+async function confirmPendingAction() {
   const p = S.pendingAction;
   if (!p) return;
   closeModal('mo-confirm');
@@ -316,19 +312,18 @@ $('btn-cf').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, 'error');
   }
-});
+}
 
 // ── tabs / tasks ──────────────────────────────────────────────
-document.querySelectorAll('.tab[data-vtab]').forEach(t => {
-  t.addEventListener('click', () => {
-    S.activeVTab = t.dataset.vtab;
-    document.querySelectorAll('.tab[data-vtab]').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    $('vtab-vms').classList.toggle('hidden', S.activeVTab !== 'vms');
-    $('vtab-tasks').classList.toggle('hidden', S.activeVTab !== 'tasks');
-    if (S.activeVTab === 'tasks') loadTasks();
+function switchVmTab(tabName) {
+  S.activeVTab = tabName;
+  document.querySelectorAll('.tab[data-vtab]').forEach(x => {
+    x.classList.toggle('active', x.dataset.vtab === tabName);
   });
-});
+  $('vtab-vms')?.classList.toggle('hidden', tabName !== 'vms');
+  $('vtab-tasks')?.classList.toggle('hidden', tabName !== 'tasks');
+  if (tabName === 'tasks') loadTasks();
+}
 
 function renderTaskList(tasks) {
   $('task-list').innerHTML = tasks.length
@@ -450,11 +445,9 @@ async function showTaskDetail(taskId) {
 window.showTaskDetail = showTaskDetail;
 
 // ── create VM ─────────────────────────────────────────────────
-$('btn-create-vm').addEventListener('click', () => openModal('mo-create-vm'));
-
-$('btn-submit-vm').addEventListener('click', async () => {
+async function submitCreateVm() {
   const btn = $('btn-submit-vm');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
     const ud = $('create-ud').value.trim();
     const task = await api('POST', '/api/create-vm', {
@@ -472,14 +465,9 @@ $('btn-submit-vm').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
-});
-
-$('btn-refresh-vms').addEventListener('click', async () => {
-  await loadVms();
-  toast('已刷新');
-});
+}
 
 // ── add account ───────────────────────────────────────────────
 function setAddMode(mode) {
@@ -489,10 +477,6 @@ function setAddMode(mode) {
   $('add-mode-manual').classList.toggle('hidden', isJson);
   $('add-mode-json').classList.toggle('hidden', !isJson);
 }
-
-document.querySelectorAll('[data-add-mode]').forEach(tab => {
-  tab.addEventListener('click', () => setAddMode(tab.dataset.addMode));
-});
 
 function resetAddForm() {
   ['add-name', 'add-cid', 'add-tid', 'add-sec', 'add-sid', 'add-json'].forEach(id => { $(id).value = ''; });
@@ -613,24 +597,28 @@ function openAddAccount() {
 }
 window.openAddAccount = openAddAccount;
 
-$('btn-parse-json').addEventListener('click', () => {
+function parseJsonFromForm() {
   try {
     const parsed = parseCredentialPayload($('add-json').value);
     applyParsedCredentials(parsed);
   } catch (e) {
     const res = $('add-json-result');
-    res.className = 'err-box';
-    res.textContent = e.message;
-    res.classList.remove('hidden');
+    if (res) {
+      res.className = 'err-box';
+      res.textContent = e.message;
+      res.classList.remove('hidden');
+    }
     toast(e.message, 'error');
   }
-});
+}
 
-$('btn-check-add').addEventListener('click', async () => {
+async function checkAddAccount() {
   const btn = $('btn-check-add');
   const res = $('add-check-result');
-  btn.disabled = true;
-  btn.textContent = '验证中...';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '验证中...';
+  }
   try {
     ensureCredentialsFromJsonIfNeeded();
     const d = await api('POST', '/api/accounts/check', {
@@ -639,21 +627,27 @@ $('btn-check-add').addEventListener('click', async () => {
       tenantId: $('add-tid').value.trim(),
       subscriptionId: $('add-sid').value.trim(),
     });
-    res.className = 'ok-box';
-    res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
+    if (res) {
+      res.className = 'ok-box';
+      res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
+    }
   } catch (e) {
-    res.className = 'err-box';
-    res.textContent = `验证失败：${e.message}`;
+    if (res) {
+      res.className = 'err-box';
+      res.textContent = `验证失败：${e.message}`;
+    }
   } finally {
-    res.classList.remove('hidden');
-    btn.disabled = false;
-    btn.textContent = '验证凭据';
+    res?.classList.remove('hidden');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '验证凭据';
+    }
   }
-});
+}
 
-$('btn-save-add').addEventListener('click', async () => {
+async function saveAddAccount() {
   const btn = $('btn-save-add');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
     ensureCredentialsFromJsonIfNeeded();
     const name = $('add-name').value.trim() || $('add-cid').value.trim().slice(0, 8) || 'Azure Account';
@@ -678,23 +672,23 @@ $('btn-save-add').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
-});
+}
 
 // ── edit / delete account ─────────────────────────────────────
-$('btn-edit-acc').addEventListener('click', () => {
+function openEditAccount() {
   const acc = S.accounts.find(a => a.id === S.selectedAccId);
   if (!acc) return;
   $('edit-acc-id').value = acc.id;
   $('edit-acc-name').value = acc.name;
   $('edit-acc-exp').value = acc.expirationDate || '';
   openModal('mo-edit-acc');
-});
+}
 
-$('btn-save-edit-acc').addEventListener('click', async () => {
+async function saveEditAccount() {
   const btn = $('btn-save-edit-acc');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
     await api('POST', '/api/accounts/edit', {
       accountId: $('edit-acc-id').value,
@@ -710,11 +704,11 @@ $('btn-save-edit-acc').addEventListener('click', async () => {
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
-});
+}
 
-$('btn-del-acc').addEventListener('click', async () => {
+async function deleteSelectedAccount() {
   const acc = S.accounts.find(a => a.id === S.selectedAccId);
   if (!confirm(`确认删除账户「${acc?.name}」？`)) return;
   try {
@@ -722,72 +716,149 @@ $('btn-del-acc').addEventListener('click', async () => {
     S.selectedAccId = null;
     S.accounts = await api('GET', '/api/accounts');
     refreshOverview();
-    $('view-acc-list').classList.remove('hidden');
-    $('view-vms').classList.add('hidden');
+    $('view-acc-list')?.classList.remove('hidden');
+    $('view-vms')?.classList.add('hidden');
     renderAccGrid();
     toast('账户已删除', 'success');
   } catch (e) {
     toast(e.message, 'error');
   }
-});
+}
 
 // ── settings ──────────────────────────────────────────────────
 async function loadStartupScript() {
   try {
     const d = await api('GET', '/api/settings/startup-script');
-    $('startup-script').value = d.userData || '';
+    if ($('startup-script')) $('startup-script').value = d.userData || '';
   } catch { /* ignore */ }
 }
 
-$('btn-save-script').addEventListener('click', async () => {
+async function saveStartupScript() {
   const btn = $('btn-save-script');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   try {
     await api('POST', '/api/settings/startup-script', { userData: $('startup-script').value });
     toast('脚本已保存', 'success');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
-});
+}
 
 // ── auth ──────────────────────────────────────────────────────
-$('btn-logout').addEventListener('click', async () => {
+async function doLogout() {
   await api('POST', '/auth/logout').catch(() => {});
   location.reload();
-});
+}
 
-$('login-btn').addEventListener('click', async () => {
+async function doLogin() {
   const err = $('login-err');
-  err.classList.add('hidden');
+  err?.classList.add('hidden');
   try {
     await api('POST', '/auth/login', { password: $('login-pw').value });
     S.accounts = await api('GET', '/api/accounts');
     showApp();
   } catch (e) {
-    err.textContent = e.status === 401 ? '密码错误，请重试' : e.message;
-    err.classList.remove('hidden');
+    if (err) {
+      err.textContent = e.status === 401 ? '密码错误，请重试' : e.message;
+      err.classList.remove('hidden');
+    }
   }
-});
+}
 
-$('login-pw').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('login-btn').click();
-});
+function revealApp() {
+  const login = $('login-screen');
+  const app = $('app');
+  if (login) {
+    login.style.display = 'none';
+    login.classList.add('hidden');
+  }
+  if (app) {
+    app.style.display = 'block';
+    app.classList.add('is-on');
+  }
+}
 
 function showApp() {
-  $('login-screen').style.display = 'none';
-  $('app').style.display = 'block';
+  revealApp();
   switchPage('overview');
 }
 
+function bindUI() {
+  // Event delegation keeps nav/toggle working even if individual bindings fail.
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+
+    const closer = t.closest('[data-close]');
+    if (closer) {
+      closeModal(closer.getAttribute('data-close'));
+      return;
+    }
+    if (t.classList.contains('mo')) {
+      closeModal(t.id);
+      return;
+    }
+
+    const nav = t.closest('.ni[data-page]');
+    if (nav) {
+      e.preventDefault();
+      switchPage(nav.getAttribute('data-page'));
+      return;
+    }
+
+    if (t.closest('#sbtoggle')) {
+      e.preventDefault();
+      $('sidebar')?.classList.toggle('col');
+      return;
+    }
+
+    const vtab = t.closest('.tab[data-vtab]');
+    if (vtab) {
+      switchVmTab(vtab.getAttribute('data-vtab'));
+      return;
+    }
+
+    const addMode = t.closest('[data-add-mode]');
+    if (addMode) {
+      setAddMode(addMode.getAttribute('data-add-mode'));
+      return;
+    }
+
+    if (t.closest('#btn-logout')) return void doLogout();
+    if (t.closest('#login-btn')) return void doLogin();
+    if (t.closest('#btn-guide-to-add')) {
+      closeModal('mo-azure-guide');
+      openAddAccount();
+      return;
+    }
+    if (t.closest('#btn-back-accounts')) return void backToAccountList();
+    if (t.closest('#btn-create-vm')) return void openModal('mo-create-vm');
+    if (t.closest('#btn-submit-vm')) return void submitCreateVm();
+    if (t.closest('#btn-refresh-vms')) return void loadVms().then(() => toast('已刷新'));
+    if (t.closest('#btn-parse-json')) return void parseJsonFromForm();
+    if (t.closest('#btn-check-add')) return void checkAddAccount();
+    if (t.closest('#btn-save-add')) return void saveAddAccount();
+    if (t.closest('#btn-edit-acc')) return void openEditAccount();
+    if (t.closest('#btn-save-edit-acc')) return void saveEditAccount();
+    if (t.closest('#btn-del-acc')) return void deleteSelectedAccount();
+    if (t.closest('#btn-save-script')) return void saveStartupScript();
+    if (t.closest('#btn-cf')) return void confirmPendingAction();
+  });
+
+  on('login-pw', 'keydown', (e) => {
+    if (e.key === 'Enter') doLogin();
+  });
+}
+
 async function init() {
+  bindUI();
   try {
     const session = await api('GET', '/api/session');
     if (!session.loggedIn) return;
     S.accounts = await api('GET', '/api/accounts');
-    $('login-screen').style.display = 'none';
-    $('app').style.display = 'block';
+    revealApp();
 
     const restoreId = session.selectedAccountId
       && S.accounts.some(a => a.id === session.selectedAccountId)
@@ -804,4 +875,8 @@ async function init() {
   }
 }
 
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
