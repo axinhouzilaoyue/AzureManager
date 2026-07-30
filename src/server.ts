@@ -20,7 +20,7 @@ import {
 } from "./lib/db";
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
-import { listVirtualMachines } from "./lib/azure/compute";
+import { listVirtualMachines, listVmSizes } from "./lib/azure/compute";
 import { getSubscriptionDetails, listSubscriptionLocations } from "./lib/azure/subscription";
 import {
   accountCheckSchema,
@@ -191,6 +191,48 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse(await listAccounts(ENV));
   }
 
+  // cross-account VM fleet for overview page
+  if (req.method === "GET" && url.pathname === "/api/overview/vms") {
+    const accounts = await listAccounts(ENV);
+    const chunks = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          const decrypted = await getDecryptedAccountOrThrow(ENV, account.id);
+          const client = new AzureArmClient(ENV, decrypted);
+          const vms = await listVirtualMachines(client, decrypted.subscriptionId);
+          const accountLabel = (account.email || account.name || "未命名账户").trim();
+          return vms.map((vm) => ({
+            accountId: account.id,
+            accountLabel,
+            name: vm.name,
+            status: vm.status,
+            location: vm.location,
+            vmSize: vm.vmSize,
+            publicIp: vm.publicIp,
+            uptimeDays: vm.uptimeDays,
+            timeCreated: vm.timeCreated,
+            resourceGroup: vm.resourceGroup,
+          }));
+        } catch {
+          return [] as Array<Record<string, unknown>>;
+        }
+      }),
+    );
+    const items = chunks.flat().sort((a, b) => {
+      const byAccount = String(a.accountLabel).localeCompare(String(b.accountLabel));
+      if (byAccount !== 0) return byAccount;
+      return String(a.name).localeCompare(String(b.name));
+    });
+    const running = items.filter((vm) => String(vm.status || "").toLowerCase().includes("running")).length;
+    return jsonResponse({
+      accountCount: accounts.length,
+      vmCount: items.length,
+      runningCount: running,
+      stoppedCount: Math.max(0, items.length - running),
+      items,
+    });
+  }
+
   // account check (with credentials in body)
   if (req.method === "POST" && url.pathname === "/api/accounts/check") {
     const body = await parseBody(req, accountCheckSchema);
@@ -340,6 +382,20 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const client = new AzureArmClient(ENV, account);
     const regions = await listSubscriptionLocations(client, account.subscriptionId);
     return jsonResponse(regions.sort((a, b) => a.displayName.localeCompare(b.displayName)));
+  }
+
+  // VM sizes available in a specific region (live from Azure)
+  if (req.method === "GET" && url.pathname === "/api/vm-sizes") {
+    const location = (url.searchParams.get("location") || "").trim();
+    if (!location) return errorResponse(400, "请提供 location 参数");
+    try {
+      const account = await getDecryptedAccountOrThrow(ENV, selectedId);
+      const client = new AzureArmClient(ENV, account);
+      const sizes = await listVmSizes(client, account.subscriptionId, location);
+      return jsonResponse(sizes);
+    } catch (error) {
+      return errorResponse(400, formatAzureError(error));
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/api/vms") {

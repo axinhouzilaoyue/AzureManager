@@ -107,11 +107,106 @@ function openAzureGuide() {
 window.openAzureGuide = openAzureGuide;
 
 // ── overview ──────────────────────────────────────────────────
-function refreshOverview() {
-  $('hero-greeting').textContent = greeting();
-  $('stat-accounts').textContent = S.accounts.length;
-  const acc = S.accounts.find(a => a.id === S.selectedAccId);
-  $('stat-workspace').textContent = acc ? acc.name : '未选择';
+function statusBadge(status) {
+  const ps = String(status || '-');
+  const lower = ps.toLowerCase();
+  const bc = lower.includes('running')
+    ? 'bg-ok'
+    : (lower.includes('deallocat') || lower.includes('stopped'))
+      ? 'bg-err'
+      : 'bg-inf';
+  return `<span class="badge ${bc}">${esc(ps)}</span>`;
+}
+
+function fleetUptimeText(vm) {
+  const lower = String(vm.status || '').toLowerCase();
+  if (!lower.includes('running')) return '未运行';
+  if (typeof vm.uptimeDays === 'number') {
+    return vm.uptimeDays <= 0 ? '不足 1 天' : `${vm.uptimeDays} 天`;
+  }
+  return '-';
+}
+
+function renderFleetList(items) {
+  const list = $('fleet-list');
+  const meta = $('fleet-meta');
+  if (!list) return;
+
+  if (!S.accounts.length) {
+    list.innerHTML = `
+      <div class="empty fleet-empty">
+        <h3>还没有账户</h3>
+        <p>添加 Azure 账户后，这里会汇总展示全部虚拟机。</p>
+        <button class="btn btn-p" style="margin-top:8px" onclick="openAddAccount()">添加账户</button>
+      </div>`;
+    if (meta) meta.textContent = '暂无数据';
+    return;
+  }
+
+  if (!items.length) {
+    list.innerHTML = `
+      <div class="empty fleet-empty">
+        <h3>暂无虚拟机</h3>
+        <p>当前所有账户下都还没有机器，或暂时无法拉取。</p>
+        <button class="btn btn-s" style="margin-top:8px" onclick="switchPage('accounts')">去账户页</button>
+      </div>`;
+    if (meta) meta.textContent = `0 台机器 · ${S.accounts.length} 个账户`;
+    return;
+  }
+
+  list.innerHTML = items.map((vm) => `
+    <div class="fleet-row" onclick='openVmView(${jsq(vm.accountId)})'>
+      <div style="min-width:0">
+        <div class="fleet-name">${esc(vm.name)}</div>
+        <div class="fleet-sub">${esc(vm.accountLabel || '-')}</div>
+      </div>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600">${esc(vm.location || '-')}</div>
+        <div class="fleet-sub">${esc(vm.vmSize || '-')}</div>
+      </div>
+      <div>${statusBadge(vm.status)}</div>
+      <div style="font-size:13px;font-weight:650">${esc(fleetUptimeText(vm))}</div>
+      <div class="fleet-ip">${esc(vm.publicIp || '-')}</div>
+    </div>
+  `).join('');
+
+  if (meta) meta.textContent = `${items.length} 台机器 · ${S.accounts.length} 个账户`;
+}
+
+async function refreshOverview() {
+  if ($('hero-greeting')) $('hero-greeting').textContent = `${greeting()}，总览`;
+  if ($('stat-accounts')) $('stat-accounts').textContent = S.accounts.length;
+
+  const list = $('fleet-list');
+  const meta = $('fleet-meta');
+  if (list && !list.dataset.loaded) {
+    list.innerHTML = `<div class="muted" style="padding:28px 18px;font-size:13px">正在汇总全部账户的虚拟机…</div>`;
+  }
+  if (meta) meta.textContent = '加载中…';
+
+  if (!S.accounts.length) {
+    if ($('stat-vms')) $('stat-vms').textContent = '0';
+    if ($('stat-running')) $('stat-running').textContent = '0';
+    if ($('stat-running-note')) $('stat-running-note').textContent = '停机 0';
+    renderFleetList([]);
+    return;
+  }
+
+  try {
+    const data = await api('GET', '/api/overview/vms');
+    const items = Array.isArray(data.items) ? data.items : [];
+    if ($('stat-accounts')) $('stat-accounts').textContent = data.accountCount ?? S.accounts.length;
+    if ($('stat-vms')) $('stat-vms').textContent = data.vmCount ?? items.length;
+    if ($('stat-running')) $('stat-running').textContent = data.runningCount ?? 0;
+    if ($('stat-running-note')) $('stat-running-note').textContent = `停机 ${data.stoppedCount ?? 0}`;
+    renderFleetList(items);
+    if (list) list.dataset.loaded = '1';
+  } catch (e) {
+    if (meta) meta.textContent = '加载失败';
+    if (list) {
+      list.innerHTML = `<div class="err-box" style="margin:16px">汇总失败：${esc(e.message)}</div>`;
+    }
+  }
 }
 
 // ── accounts ──────────────────────────────────────────────────
@@ -135,32 +230,82 @@ function showAccList() {
   showAccountListView();
 }
 
-function formatExpiry(dateStr) {
-  if (!dateStr) return '未设置';
-  return dateStr;
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const end = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(end.getTime())) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - now.getTime()) / 86400000);
+}
+
+function expiryBadge(dateStr) {
+  const days = daysUntil(dateStr);
+  if (days === null) return `<span class="badge bg-inf">未设置到期</span>`;
+  if (days < 0) return `<span class="badge bg-err">已过期 ${Math.abs(days)} 天</span>`;
+  if (days === 0) return `<span class="badge bg-err">今天到期</span>`;
+  if (days <= 7) return `<span class="badge bg-err">剩余 ${days} 天</span>`;
+  if (days <= 30) return `<span class="badge bg-run">剩余 ${days} 天</span>`;
+  return `<span class="badge bg-ok">剩余 ${days} 天</span>`;
+}
+
+function expiryStatClass(dateStr) {
+  const days = daysUntil(dateStr);
+  if (days === null) return '';
+  if (days <= 7) return 'danger';
+  if (days <= 30) return 'warn';
+  return 'ok';
+}
+
+function expiryStatText(dateStr) {
+  const days = daysUntil(dateStr);
+  if (days === null) return '未设置';
+  if (days < 0) return `已过期 ${Math.abs(days)} 天 · ${dateStr}`;
+  if (days === 0) return `今天到期 · ${dateStr}`;
+  return `剩余 ${days} 天 · ${dateStr}`;
+}
+
+function accountDisplayName(a) {
+  return (a?.email || a?.name || '未命名账户').trim();
 }
 
 function accountCardHtml(a) {
   const st = S.accountStats[a.id] || {};
   const vmText = st.loading ? '加载中…'
     : (typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.error ? '获取失败' : '-'));
-  const subName = st.subscriptionDisplayName || a.name;
-  const state = st.state || '-';
+  const subName = st.subscriptionDisplayName || 'Azure 订阅';
+  const state = st.state ? String(st.state) : '';
+  const expCls = expiryStatClass(a.expirationDate);
+  const title = accountDisplayName(a);
   return `
     <div class="acc-card" onclick='openVmView(${jsq(a.id)})'>
       <div class="acc-top">
-        <div class="acc-name">${esc(a.name)}</div>
-        ${a.expirationDate ? `<span class="badge bg-err">订阅到期 ${esc(a.expirationDate)}</span>` : `<span class="badge bg-inf">就绪</span>`}
+        <div style="min-width:0">
+          <div class="acc-name" title="${esc(title)}">${esc(title)}</div>
+          <div class="acc-sub" title="${esc(subName)}">${esc(subName)}${state ? ` · ${esc(state)}` : ''}</div>
+        </div>
+        ${expiryBadge(a.expirationDate)}
       </div>
-      <div class="acc-meta">
-        <div class="meta-row"><span class="meta-k">邮箱</span><span class="meta-v">${esc(a.email || '未设置')}</span></div>
-        <div class="meta-row"><span class="meta-k">到期日</span><span class="meta-v">${esc(formatExpiry(a.expirationDate))}</span></div>
-        <div class="meta-row"><span class="meta-k">机器数</span><span class="meta-v">${esc(vmText)}</span></div>
-        <div class="meta-row"><span class="meta-k">订阅</span><span class="meta-v">${esc(subName)}${state && state !== '-' ? ` · ${esc(state)}` : ''}</span></div>
+      <div class="acc-stats">
+        <div class="acc-stat">
+          <div class="acc-stat-k">机器数量</div>
+          <div class="acc-stat-v">${esc(vmText)}</div>
+        </div>
+        <div class="acc-stat">
+          <div class="acc-stat-k">订阅状态</div>
+          <div class="acc-stat-v">${esc(state || '-')}</div>
+        </div>
+        <div class="acc-stat" style="grid-column:1/-1">
+          <div class="acc-stat-k">订阅到期</div>
+          <div class="acc-stat-v ${expCls}">${esc(expiryStatText(a.expirationDate))}</div>
+        </div>
       </div>
       <div class="acc-foot">
-        <button class="btn btn-s btn-sm" onclick='openEditAccount(${jsq(a.id)}, event)'>编辑</button>
-        <button class="btn btn-p btn-sm" onclick='openVmView(${jsq(a.id)}, event)'>打开 →</button>
+        <span class="acc-foot-note">点击卡片进入工作台</span>
+        <div class="bgrp">
+          <button class="btn btn-s btn-sm" onclick='openEditAccount(${jsq(a.id)}, event)'>编辑</button>
+          <button class="btn btn-p btn-sm" onclick='openVmView(${jsq(a.id)}, event)'>打开</button>
+        </div>
       </div>
     </div>`;
 }
@@ -229,8 +374,12 @@ async function openVmView(accId, e) {
   $('vtab-tasks').classList.add('hidden');
 
   const acc = S.accounts.find(a => a.id === accId);
-  $('vm-acc-title').textContent = acc?.name || '-';
-  const bits = [acc?.email, acc?.expirationDate ? `到期 ${acc.expirationDate}` : null].filter(Boolean);
+  $('vm-acc-title').textContent = accountDisplayName(acc);
+  const st = S.accountStats[accId] || {};
+  const bits = [
+    st.subscriptionDisplayName || null,
+    acc?.expirationDate ? expiryStatText(acc.expirationDate) : null,
+  ].filter(Boolean);
   $('vm-acc-sub').textContent = bits.join(' · ') || 'Azure 订阅';
   $('view-acc-list').classList.add('hidden');
   $('view-vms').classList.remove('hidden');
@@ -268,10 +417,30 @@ async function loadVms() {
   }
 }
 
+function formatUptime(vm) {
+  const ps = String(vm.status || '').toLowerCase();
+  const running = ps.includes('running');
+  if (!running) return { text: '未运行', sub: '' };
+
+  let days = typeof vm.uptimeDays === 'number' ? vm.uptimeDays : null;
+  if (days === null && vm.timeCreated) {
+    const start = new Date(vm.timeCreated);
+    if (!Number.isNaN(start.getTime())) {
+      days = Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
+    }
+  }
+  if (days === null) return { text: '-', sub: '' };
+  if (days <= 0) return { text: '不足 1 天', sub: vm.timeCreated ? `创建于 ${String(vm.timeCreated).slice(0, 10)}` : '' };
+  return {
+    text: `${days} 天`,
+    sub: vm.timeCreated ? `创建于 ${String(vm.timeCreated).slice(0, 10)}` : '',
+  };
+}
+
 function renderVms() {
   const tb = $('vm-tbody');
   if (!S.vms.length) {
-    tb.innerHTML = `<tr><td colspan="5" style="padding:36px">
+    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
         <h3>此订阅下暂无虚拟机</h3>
         <p>点击右上角「创建虚拟机」开始。</p>
@@ -290,6 +459,7 @@ function renderVms() {
         : 'bg-inf';
     const rgArg = jsq(vm.resourceGroup);
     const vmArg = jsq(vm.name);
+    const uptime = formatUptime(vm);
     return `<tr>
       <td>
         <div class="vm-name">${esc(vm.name)}</div>
@@ -300,6 +470,10 @@ function renderVms() {
         <div class="vm-sub">${esc(vm.vmSize || '-')}</div>
       </td>
       <td><span class="badge ${bc}">${esc(ps)}</span></td>
+      <td>
+        <div>${esc(uptime.text)}</div>
+        ${uptime.sub ? `<div class="vm-sub">${esc(uptime.sub)}</div>` : ''}
+      </td>
       <td class="mono">${esc(vm.publicIp || '-')}</td>
       <td>
         <div class="ops">
@@ -314,13 +488,104 @@ function renderVms() {
   }).join('');
 }
 
+function formatMemoryGb(mb) {
+  if (!mb || mb <= 0) return '-';
+  const gb = mb / 1024;
+  return gb >= 10 ? `${Math.round(gb)} GB` : `${gb.toFixed(1).replace(/\.0$/, '')} GB`;
+}
+
+function renderVmSizeOptions(sizes, preferred = 'Standard_B1s') {
+  const sel = $('create-size');
+  if (!sel) return;
+  if (!sizes.length) {
+    sel.innerHTML = `<option value="">该区域暂无可用规格</option>`;
+    return;
+  }
+
+  // Keep a compact but useful list: free-tier first, then common small SKUs, cap length.
+  const preferredOrder = [
+    'Standard_B1s',
+    'Standard_B2ats_v2',
+    'Standard_B1ms',
+    'Standard_B2s',
+    'Standard_B2ms',
+    'Standard_D2s_v3',
+    'Standard_D4s_v3',
+  ];
+  const byName = new Map(sizes.map(s => [s.name, s]));
+  const picked = [];
+  for (const name of preferredOrder) {
+    if (byName.has(name)) picked.push(byName.get(name));
+  }
+  // Always include free-tier hits even if not in preferred list.
+  for (const s of sizes) {
+    if (s.freeTierHint && !picked.some(p => p.name === s.name)) picked.push(s);
+  }
+  // Fill remaining with smallest sizes until ~40 options.
+  for (const s of sizes) {
+    if (picked.length >= 40) break;
+    if (!picked.some(p => p.name === s.name)) picked.push(s);
+  }
+
+  const preferredAvailable = picked.some(s => s.name === preferred)
+    ? preferred
+    : (picked.find(s => s.freeTierHint)?.name || picked[0].name);
+
+  sel.innerHTML = picked.map(s => {
+    const free = s.freeTierHint ? ' · 免费试用' : '';
+    const label = `${s.name} — ${s.numberOfCores || '?'} vCPU / ${formatMemoryGb(s.memoryInMB)}${free}`;
+    return `<option value="${esc(s.name)}">${esc(label)}</option>`;
+  }).join('');
+  sel.value = preferredAvailable;
+}
+
+async function loadVmSizes(location, preferred = 'Standard_B1s') {
+  const sel = $('create-size');
+  const hint = $('create-size-hint');
+  if (!sel) return;
+  if (!location) {
+    sel.innerHTML = `<option value="">选择区域后加载…</option>`;
+    return;
+  }
+  sel.innerHTML = `<option value="">加载规格中…</option>`;
+  sel.disabled = true;
+  try {
+    const sizes = await api('GET', `/api/vm-sizes?location=${encodeURIComponent(location)}`);
+    renderVmSizeOptions(Array.isArray(sizes) ? sizes : [], preferred);
+    if (hint) {
+      const freeCount = (Array.isArray(sizes) ? sizes : []).filter(s => s.freeTierHint).length;
+      hint.textContent = freeCount
+        ? `已从 Azure 加载 ${Array.isArray(sizes) ? sizes.length : 0} 个规格（当前区域含 ${freeCount} 个常见免费试用规格）。`
+        : `已从 Azure 加载 ${Array.isArray(sizes) ? sizes.length : 0} 个规格。当前区域未返回常见免费试用规格。`;
+    }
+  } catch (e) {
+    // Fallback static list so create flow still works.
+    renderVmSizeOptions([
+      { name: 'Standard_B1s', numberOfCores: 1, memoryInMB: 1024, maxDataDiskCount: 2, freeTierHint: true },
+      { name: 'Standard_B2ats_v2', numberOfCores: 2, memoryInMB: 1024, maxDataDiskCount: 4, freeTierHint: true },
+      { name: 'Standard_B1ms', numberOfCores: 1, memoryInMB: 2048, maxDataDiskCount: 2, freeTierHint: false },
+      { name: 'Standard_B2s', numberOfCores: 2, memoryInMB: 4096, maxDataDiskCount: 4, freeTierHint: false },
+      { name: 'Standard_B2ms', numberOfCores: 2, memoryInMB: 8192, maxDataDiskCount: 4, freeTierHint: false },
+      { name: 'Standard_D2s_v3', numberOfCores: 2, memoryInMB: 8192, maxDataDiskCount: 4, freeTierHint: false },
+      { name: 'Standard_D4s_v3', numberOfCores: 4, memoryInMB: 16384, maxDataDiskCount: 8, freeTierHint: false },
+    ], preferred);
+    if (hint) hint.textContent = `实时查询失败，已使用备用列表：${e.message}`;
+  } finally {
+    sel.disabled = false;
+  }
+}
+
 async function loadRegions() {
   try {
     S.regions = await api('GET', '/api/regions');
     const sel = $('create-region');
+    if (!sel) return;
     sel.innerHTML = S.regions.map(r =>
       `<option value="${esc(r.name)}">${esc(r.displayName)}</option>`
     ).join('');
+    if (S.regions[0]?.name) {
+      await loadVmSizes(S.regions[0].name);
+    }
   } catch { /* non-critical */ }
 }
 
@@ -546,8 +811,8 @@ function setAddSaveEnabled(enabled) {
   const hint = $('add-save-hint');
   if (hint) {
     hint.textContent = enabled
-      ? '凭据已验证，可以保存账户。保存后可设置订阅到期日。'
-      : '请先验证凭据，通过后才能保存账户。订阅到期日将在保存后设置。';
+      ? '凭据已验证，可以保存。下一步需填写邮箱与订阅到期日。'
+      : '请先验证凭据，通过后才能保存。下一步将填写邮箱与订阅到期日。';
   }
 }
 
@@ -642,8 +907,7 @@ function parseCredentialPayload(raw) {
 }
 
 function applyParsedCredentials(parsed, { silent = false } = {}) {
-  if (parsed.name && !$('add-name').value.trim()) $('add-name').value = parsed.name;
-  else if (parsed.name) $('add-name').value = parsed.name;
+  // Do not use azure-cli displayName as account title; email will be the display name.
   $('add-cid').value = parsed.clientId || '';
   $('add-sec').value = parsed.clientSecret || '';
   $('add-tid').value = parsed.tenantId || '';
@@ -679,7 +943,7 @@ function ensureCredentialsFromJsonIfNeeded() {
 function openAddAccount() {
   resetAddForm();
   openModal('mo-add-acc');
-  setTimeout(() => $('add-name').focus(), 50);
+  setTimeout(() => ($('add-cid') || $('add-json'))?.focus(), 50);
 }
 window.openAddAccount = openAddAccount;
 
@@ -722,10 +986,6 @@ async function checkAddAccount() {
       res.className = 'ok-box';
       res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
     }
-    // Prefer Azure subscription display name when user left name empty.
-    if (!$('add-name').value.trim() && d.subscriptionDisplayName) {
-      $('add-name').value = d.subscriptionDisplayName;
-    }
   } catch (e) {
     S.addVerifiedKey = null;
     setAddSaveEnabled(false);
@@ -745,9 +1005,16 @@ async function checkAddAccount() {
 function openPostAddExpiryModal(account) {
   S.pendingNewAccountId = account.id;
   if ($('post-add-id')) $('post-add-id').value = account.id;
-  if ($('post-add-name')) $('post-add-name').textContent = account.name || '-';
-  if ($('post-add-exp')) $('post-add-exp').value = '';
+  if ($('post-add-name')) $('post-add-name').value = account.name || '';
+  if ($('post-add-email')) $('post-add-email').value = account.email || '';
+  if ($('post-add-exp')) $('post-add-exp').value = account.expirationDate || '';
+  const err = $('post-add-err');
+  if (err) {
+    err.className = 'err-box hidden';
+    err.textContent = '';
+  }
   openModal('mo-add-expiry');
+  setTimeout(() => $('post-add-email')?.focus(), 50);
 }
 
 async function finishPostAddFlow() {
@@ -761,23 +1028,52 @@ async function finishPostAddFlow() {
   showAccountListView();
 }
 
+function isValidEmail(value) {
+  const s = String(value || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
 async function savePostAddExpiry() {
   const accountId = $('post-add-id')?.value || S.pendingNewAccountId;
+  const email = $('post-add-email')?.value.trim() || '';
+  const exp = $('post-add-exp')?.value || '';
+  const err = $('post-add-err');
+
+  if (!email || !isValidEmail(email) || !exp) {
+    const msg = !email ? '请填写邮箱'
+      : (!isValidEmail(email) ? '邮箱格式无效' : '请选择订阅到期日');
+    if (err) {
+      err.className = 'err-box';
+      err.textContent = msg;
+      err.classList.remove('hidden');
+    }
+    toast(msg, 'error');
+    return;
+  }
+
   if (!accountId) return finishPostAddFlow();
   const acc = S.accounts.find(a => a.id === accountId);
-  const exp = $('post-add-exp')?.value || null;
+  const btn = $('btn-save-expiry');
+  if (btn) btn.disabled = true;
   try {
     await api('POST', '/api/accounts/edit', {
       accountId,
-      newName: acc?.name || $('post-add-name')?.textContent || 'Azure Account',
-      email: acc?.email || null,
+      newName: email, // display name = email
+      email,
       expirationDate: exp,
     });
-    toast(exp ? '订阅到期日已保存' : '已跳过到期日', 'success');
+    toast('账户信息已完善', 'success');
+    await finishPostAddFlow();
   } catch (e) {
+    if (err) {
+      err.className = 'err-box';
+      err.textContent = e.message;
+      err.classList.remove('hidden');
+    }
     toast(e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
-  await finishPostAddFlow();
 }
 
 async function saveAddAccount() {
@@ -790,7 +1086,8 @@ async function saveAddAccount() {
   if (btn) btn.disabled = true;
   try {
     ensureCredentialsFromJsonIfNeeded();
-    const name = $('add-name').value.trim() || $('add-cid').value.trim().slice(0, 8) || 'Azure Account';
+    // Temporary name until email is set in the next step.
+    const name = `pending-${Date.now().toString(36)}`;
     const created = await api('POST', '/api/accounts', {
       name,
       clientId: $('add-cid').value.trim(),
@@ -824,8 +1121,8 @@ function openEditAccount(accountId, e) {
     return;
   }
   $('edit-acc-id').value = acc.id;
-  $('edit-acc-name').value = acc.name || '';
-  if ($('edit-acc-email')) $('edit-acc-email').value = acc.email || '';
+  if ($('edit-acc-name')) $('edit-acc-name').value = acc.name || '';
+  if ($('edit-acc-email')) $('edit-acc-email').value = acc.email || accountDisplayName(acc) || '';
   $('edit-acc-exp').value = acc.expirationDate || '';
   openModal('mo-edit-acc');
 }
@@ -833,21 +1130,30 @@ window.openEditAccount = openEditAccount;
 
 async function saveEditAccount() {
   const btn = $('btn-save-edit-acc');
+  const email = $('edit-acc-email')?.value.trim() || '';
+  const exp = $('edit-acc-exp').value || '';
+  if (!email || !isValidEmail(email)) return toast(!email ? '请填写邮箱' : '邮箱格式无效', 'error');
+  if (!exp) return toast('请选择订阅到期日', 'error');
+
   if (btn) btn.disabled = true;
   try {
     const accountId = $('edit-acc-id').value;
     await api('POST', '/api/accounts/edit', {
       accountId,
-      newName: $('edit-acc-name').value.trim(),
-      email: $('edit-acc-email')?.value.trim() || null,
-      expirationDate: $('edit-acc-exp').value || null,
+      newName: email, // display name = email
+      email,
+      expirationDate: exp,
     });
     closeModal('mo-edit-acc');
     S.accounts = await api('GET', '/api/accounts');
     const acc = S.accounts.find(a => a.id === S.selectedAccId) || S.accounts.find(a => a.id === accountId);
     if (acc && S.selectedAccId === acc.id) {
-      $('vm-acc-title').textContent = acc.name;
-      const bits = [acc.email, acc.expirationDate ? `到期 ${acc.expirationDate}` : null].filter(Boolean);
+      $('vm-acc-title').textContent = accountDisplayName(acc);
+      const st = S.accountStats[acc.id] || {};
+      const bits = [
+        st.subscriptionDisplayName || null,
+        acc.expirationDate ? expiryStatText(acc.expirationDate) : null,
+      ].filter(Boolean);
       if ($('vm-acc-sub')) $('vm-acc-sub').textContent = bits.join(' · ') || 'Azure 订阅';
     }
     refreshOverview();
@@ -862,7 +1168,7 @@ async function saveEditAccount() {
 
 async function deleteSelectedAccount() {
   const acc = S.accounts.find(a => a.id === S.selectedAccId);
-  if (!confirm(`确认删除账户「${acc?.name}」？`)) return;
+  if (!confirm(`确认删除账户「${accountDisplayName(acc)}」？`)) return;
   try {
     await api('DELETE', `/api/accounts/${S.selectedAccId}`);
     S.selectedAccId = null;
@@ -946,13 +1252,20 @@ function bindUI() {
     const closer = t.closest('[data-close]');
     if (closer) {
       const modalId = closer.getAttribute('data-close');
+      // Post-add profile step is required; do not allow dismiss without completing.
+      if (modalId === 'mo-add-expiry' && S.pendingNewAccountId) {
+        toast('请填写邮箱和订阅到期日以完成添加', 'error');
+        return;
+      }
       closeModal(modalId);
-      if (modalId === 'mo-add-expiry' && S.pendingNewAccountId) finishPostAddFlow();
       return;
     }
     if (t.classList.contains('mo')) {
+      if (t.id === 'mo-add-expiry' && S.pendingNewAccountId) {
+        toast('请填写邮箱和订阅到期日以完成添加', 'error');
+        return;
+      }
       closeModal(t.id);
-      if (t.id === 'mo-add-expiry' && S.pendingNewAccountId) finishPostAddFlow();
       return;
     }
 
@@ -989,9 +1302,18 @@ function bindUI() {
       return;
     }
     if (t.closest('#btn-back-accounts')) return void backToAccountList();
-    if (t.closest('#btn-create-vm')) return void openModal('mo-create-vm');
+    if (t.closest('#btn-create-vm')) {
+      // Restore recommended defaults each time the dialog opens.
+      if ($('create-disk')) $('create-disk').value = '64';
+      if ($('create-ip')) $('create-ip').value = 'Dynamic';
+      openModal('mo-create-vm');
+      const loc = $('create-region')?.value || S.regions[0]?.name || '';
+      if (loc) loadVmSizes(loc, 'Standard_B1s');
+      return;
+    }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void loadVms().then(() => toast('已刷新'));
+    if (t.closest('#btn-refresh-overview')) return void refreshOverview().then(() => toast('已刷新'));
     if (t.closest('#btn-parse-json')) return void parseJsonFromForm();
     if (t.closest('#btn-check-add')) return void checkAddAccount();
     if (t.closest('#btn-save-add')) return void saveAddAccount();
@@ -1000,12 +1322,17 @@ function bindUI() {
     if (t.closest('#btn-del-acc')) return void deleteSelectedAccount();
     if (t.closest('#btn-save-script')) return void saveStartupScript();
     if (t.closest('#btn-cf')) return void confirmPendingAction();
-    if (t.closest('#btn-skip-expiry')) return void finishPostAddFlow();
     if (t.closest('#btn-save-expiry')) return void savePostAddExpiry();
   });
 
   on('login-pw', 'keydown', (e) => {
     if (e.key === 'Enter') doLogin();
+  });
+
+  // Reload SKUs when region changes in create-vm dialog.
+  on('create-region', 'change', (e) => {
+    const loc = e.target?.value || '';
+    loadVmSizes(loc, 'Standard_B1s');
   });
 
   // Invalidate verification when credentials change.

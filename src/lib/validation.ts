@@ -57,7 +57,7 @@ export const createVmSchema = z.object({
   region: z.string().trim().min(1, "区域不能为空"),
   vmSize: z.string().trim().min(1, "实例类型不能为空"),
   osImage: z.enum(["debian12", "debian11", "ubuntu22", "ubuntu20"]),
-  diskSize: z.number().int().min(30).max(1024),
+  diskSize: z.number().int().min(64).max(1024),
   ipType: z.enum(["Static", "Dynamic"]),
   userData: z.string().trim().max(32768).nullable(),
 });

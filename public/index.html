@@ -8,33 +8,33 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #faf9f5;
-      --bg-card: #f0eee8;
-      --bg-soft: #e9e6df;
-      --bg-hover: #e9e6df;
-      --float: #fffdf9;
-      --text: #2d2a26;
-      --text-2: #6d6760;
-      --text-3: #a29c95;
-      --line: #e3e1db;
-      --line-2: #d5d2cb;
-      --line-3: #cecac4;
-      --pr: #8b8680;
-      --pr-hover: #7f7a74;
-      --pr-active: #726d67;
-      --ok: #10b981;
-      --ok-bg: #d1fae5;
-      --ok-text: #065f46;
-      --err: #c65746;
-      --err-bg: rgba(198, 87, 70, 0.12);
-      --err-text: #8a3a30;
-      --run-bg: #dbeafe;
-      --run-text: #1e40af;
-      --inf-bg: rgba(139, 134, 128, 0.18);
-      --inf-text: #726d67;
-      --shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-      --shadow-lg: 0 10px 18px -3px rgb(0 0 0 / 0.1);
-      --float-shadow: 0 12px 26px rgba(0, 0, 0, 0.14);
+      --bg: #ffffff;
+      --bg-card: #ffffff;
+      --bg-soft: #f5f5f5;
+      --bg-hover: #f0f0f0;
+      --float: #ffffff;
+      --text: #111827;
+      --text-2: #6b7280;
+      --text-3: #9ca3af;
+      --line: #e5e7eb;
+      --line-2: #e5e7eb;
+      --line-3: #d1d5db;
+      --pr: #111827;
+      --pr-hover: #1f2937;
+      --pr-active: #000000;
+      --ok: #059669;
+      --ok-bg: #ecfdf5;
+      --ok-text: #047857;
+      --err: #dc2626;
+      --err-bg: #fef2f2;
+      --err-text: #b91c1c;
+      --run-bg: #eff6ff;
+      --run-text: #1d4ed8;
+      --inf-bg: #f3f4f6;
+      --inf-text: #4b5563;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+      --shadow-lg: 0 10px 24px -8px rgb(0 0 0 / 0.08);
+      --float-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
       --r: 8px;
       --rl: 12px;
       --sw: 228px;
@@ -99,8 +99,8 @@
     textarea.fi { min-height: 96px; resize: vertical; line-height: 1.55; }
     select.fi { cursor: pointer; }
     .fi:focus {
-      border-color: var(--pr);
-      box-shadow: 0 0 0 3px rgba(139, 134, 128, 0.18);
+      border-color: #111827;
+      box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
     }
     .fi::placeholder { color: var(--text-3); }
     .fhint { font-size: 12px; color: var(--text-2); line-height: 1.5; }
@@ -149,7 +149,7 @@
     .login-h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 12px; }
     .login-sub { margin-top: 4px; color: var(--text-2); font-size: 13px; }
     .login-card {
-      background: var(--bg-card); border: 1px solid var(--line);
+      background: #fff; border: 1px solid var(--line);
       border-radius: var(--rl); box-shadow: var(--shadow-lg);
       padding: 24px; display: flex; flex-direction: column; gap: 14px;
     }
@@ -163,7 +163,7 @@
     .sidebar {
       width: var(--sw); flex-shrink: 0; height: 100vh;
       display: flex; flex-direction: column; position: relative;
-      background: var(--bg-card); border-right: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+      background: #fff; border-right: 1px solid var(--line);
       transition: width var(--t); z-index: 40;
       overflow: visible;
     }
@@ -175,8 +175,8 @@
       position: absolute; top: 50%; right: -12px; transform: translateY(-50%);
       width: 24px; height: 48px; border-radius: 14px;
       border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
-      background: var(--bg-card); color: var(--text-2);
-      display: grid; place-items: center; box-shadow: 4px 0 14px rgb(0 0 0 / 0.08);
+      background: #fff; color: var(--text-2);
+      display: grid; place-items: center; box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
       z-index: 60; pointer-events: auto;
     }
     .sbtoggle:hover { color: var(--text); background: color-mix(in srgb, var(--bg-card) 90%, var(--text) 6%); }
@@ -282,30 +282,71 @@
     .stat-value { margin-top: 8px; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }
     .stat-note { margin-top: 6px; color: var(--text-3); font-size: 12px; }
 
+    .fleet-list { display: flex; flex-direction: column; }
+    .fleet-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 110px 90px 140px;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+      transition: background var(--t);
+    }
+    .fleet-row:last-child { border-bottom: none; }
+    .fleet-row:hover { background: #fafafa; }
+    .fleet-name { font-weight: 720; font-size: 14px; }
+    .fleet-sub { margin-top: 3px; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fleet-ip { font-family: var(--mono); font-size: 12px; color: var(--text); }
+    .fleet-empty { padding: 48px 20px; }
+    @media (max-width: 900px) {
+      .fleet-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+      }
+    }
+
     .acc-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;
     }
     .acc-card {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
-      padding: 18px; box-shadow: var(--shadow); cursor: pointer;
+      background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 18px 18px 14px; box-shadow: var(--shadow); cursor: pointer;
       transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+      display: flex; flex-direction: column; gap: 14px;
     }
     .acc-card:hover {
       border-color: var(--line-3); box-shadow: var(--shadow-lg); transform: translateY(-1px);
     }
-    .acc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .acc-name { font-size: 16px; font-weight: 750; letter-spacing: -0.02em; }
-    .acc-meta { margin-top: 12px; display: grid; gap: 8px; }
-    .meta-row {
-      display: grid; grid-template-columns: 72px 1fr; gap: 8px;
-      font-size: 12px; color: var(--text-2);
+    .acc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .acc-name { font-size: 16px; font-weight: 760; letter-spacing: -0.02em; line-height: 1.3; }
+    .acc-sub {
+      margin-top: 4px; font-size: 12px; color: var(--text-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px;
     }
-    .meta-k { color: var(--text-3); }
-    .meta-v { font-family: var(--mono); color: var(--text); word-break: break-all; }
+    .acc-stats {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .acc-stat {
+      background: var(--bg); border: 1px solid var(--line);
+      border-radius: 12px; padding: 10px 12px;
+    }
+    .acc-stat-k {
+      font-size: 11px; font-weight: 650; color: var(--text-3);
+      letter-spacing: 0.02em;
+    }
+    .acc-stat-v {
+      margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--text);
+      word-break: break-all; line-height: 1.35;
+    }
+    .acc-stat-v.ok { color: #047857; }
+    .acc-stat-v.warn { color: #b45309; }
+    .acc-stat-v.danger { color: var(--err); }
     .acc-foot {
-      margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line);
+      padding-top: 2px;
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
+    .acc-foot-note { font-size: 12px; color: var(--text-3); }
 
     .empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -583,31 +624,42 @@
     <main class="content">
       <!-- Overview -->
       <section class="page" id="pg-overview">
-        <div class="hero">
-          <div class="hero-bg">AZURE</div>
-          <div class="hero-kicker" id="hero-greeting">你好</div>
-          <div class="hero-title">欢迎回来</div>
-          <div class="hero-desc">绑定 Azure 应用注册凭据后，即可创建、启停、换 IP 与删除虚拟机。操作异步执行，可在任务列表跟踪进度。</div>
-          <div class="hero-actions">
-            <button class="btn btn-p" type="button" onclick="switchPage('accounts')">管理账户</button>
-            <button class="btn btn-s" type="button" onclick="openAddAccount()">添加账户</button>
+        <div class="page-head" style="margin-bottom:18px">
+          <div>
+            <div class="page-title" style="font-size:28px" id="hero-greeting">概览</div>
+            <div class="page-sub">全部账户下的虚拟机总览</div>
+          </div>
+          <div class="bgrp">
+            <button class="btn btn-s" type="button" id="btn-refresh-overview">刷新</button>
+            <button class="btn btn-p" type="button" onclick="openAddAccount()">添加账户</button>
           </div>
         </div>
-        <div class="stat-grid">
+
+        <div class="stat-grid" style="margin-bottom:18px">
           <div class="stat">
-            <div class="stat-label">已绑定账户</div>
+            <div class="stat-label">账户</div>
             <div class="stat-value" id="stat-accounts">0</div>
-            <div class="stat-note">每个账户对应一个订阅</div>
+            <div class="stat-note">已绑定订阅</div>
           </div>
           <div class="stat">
-            <div class="stat-label">当前工作区</div>
-            <div class="stat-value" style="font-size:20px" id="stat-workspace">未选择</div>
-            <div class="stat-note">进入账户后可操作 VM</div>
+            <div class="stat-label">全部机器</div>
+            <div class="stat-value" id="stat-vms">0</div>
+            <div class="stat-note">跨账户合计</div>
           </div>
           <div class="stat">
-            <div class="stat-label">推荐路径</div>
-            <div class="stat-value" style="font-size:18px">添加 → 验证 → 创建</div>
-            <div class="stat-note">字段命名已对齐 Azure 控制台</div>
+            <div class="stat-label">运行中</div>
+            <div class="stat-value" id="stat-running" style="color:#059669">0</div>
+            <div class="stat-note" id="stat-running-note">停机 0</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <span class="card-t">机器列表</span>
+            <span class="muted small" id="fleet-meta">加载中…</span>
+          </div>
+          <div class="card-b" style="padding:0" id="fleet-wrap">
+            <div id="fleet-list" class="fleet-list"></div>
           </div>
         </div>
       </section>
@@ -661,6 +713,7 @@
                     <th>虚拟机</th>
                     <th>区域 / 规格</th>
                     <th>状态</th>
+                    <th>开机</th>
                     <th>公网 IP</th>
                     <th>操作</th>
                   </tr>
@@ -857,14 +910,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
       </div>
 
       <div id="add-mode-manual">
-        <div class="fg">
-          <label class="fl" for="add-name">
-            <span class="fl-title">显示名称</span>
-            <span class="fl-azure">仅用于本面板识别；JSON 里的 displayName 可自动带入</span>
-          </label>
-          <input class="fi" type="text" id="add-name" placeholder="例如：生产订阅 / 个人实验" />
-        </div>
-
+        <input type="hidden" id="add-name" value="" />
         <div class="frow">
           <div class="fg">
             <label class="fl" for="add-cid">
@@ -900,7 +946,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
       </div>
 
       <div id="add-check-result" class="hidden"></div>
-      <div class="fhint" id="add-save-hint">请先验证凭据，通过后才能保存账户。订阅到期日将在保存后设置。</div>
+      <div class="fhint" id="add-save-hint">请先验证凭据，通过后才能保存。下一步将填写邮箱与订阅到期日。</div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" type="button" data-close="mo-add-acc">取消</button>
@@ -910,25 +956,34 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<!-- Modal: 保存后设置订阅到期日 -->
+<!-- Modal: 保存后完善邮箱与到期日（必填） -->
 <div id="mo-add-expiry" class="mo hidden">
-  <div class="md md-sm">
+  <div class="md">
     <div class="md-h">
-      <span class="md-ttl">设置订阅到期日</span>
-      <button class="md-x" data-close="mo-add-expiry" type="button">×</button>
+      <span class="md-ttl">完善账户信息</span>
     </div>
     <div class="md-b">
       <input type="hidden" id="post-add-id" />
-      <p class="muted" style="font-size:13px;line-height:1.6">账户 <strong id="post-add-name">-</strong> 已保存。可设置订阅到期提醒，也可跳过。</p>
+      <p class="muted" style="font-size:13px;line-height:1.6">凭据已保存。请填写邮箱与订阅到期日以完成添加。邮箱将作为账户展示名称。</p>
+      <input type="hidden" id="post-add-name" value="" />
       <div class="fg">
-        <label class="fl" for="post-add-exp"><span class="fl-title">订阅到期日</span></label>
-        <input class="fi" type="date" id="post-add-exp" />
-        <div class="fhint">仅用于面板提醒，不影响 Azure 鉴权。</div>
+        <label class="fl" for="post-add-email">
+          <span class="fl-title">邮箱（展示名称） <span style="color:var(--err)">*</span></span>
+        </label>
+        <input class="fi" type="email" id="post-add-email" placeholder="例如 name@example.com" autocomplete="email" />
+        <div class="fhint">账户列表、工作台标题都会显示该邮箱，而不是 azure-cli 自动生成的名称。</div>
       </div>
+      <div class="fg">
+        <label class="fl" for="post-add-exp">
+          <span class="fl-title">订阅到期日 <span style="color:var(--err)">*</span></span>
+        </label>
+        <input class="fi" type="date" id="post-add-exp" />
+        <div class="fhint">必填。仅用于面板提醒与剩余天数展示，不影响 Azure 鉴权。</div>
+      </div>
+      <div id="post-add-err" class="err-box hidden"></div>
     </div>
     <div class="md-f">
-      <button class="btn btn-g" type="button" id="btn-skip-expiry">跳过</button>
-      <button class="btn btn-p" type="button" id="btn-save-expiry">保存到期日</button>
+      <button class="btn btn-p" type="button" id="btn-save-expiry">完成添加</button>
     </div>
   </div>
 </div>
@@ -949,13 +1004,9 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
         <div class="fg">
           <label class="fl" for="create-size"><span class="fl-title">实例规格</span></label>
           <select class="fi" id="create-size">
-            <option value="Standard_B1s">Standard_B1s — 1 vCPU / 1 GB</option>
-            <option value="Standard_B1ms">Standard_B1ms — 1 vCPU / 2 GB</option>
-            <option value="Standard_B2s">Standard_B2s — 2 vCPU / 4 GB</option>
-            <option value="Standard_B2ms">Standard_B2ms — 2 vCPU / 8 GB</option>
-            <option value="Standard_D2s_v3">Standard_D2s_v3 — 2 vCPU / 8 GB</option>
-            <option value="Standard_D4s_v3">Standard_D4s_v3 — 4 vCPU / 16 GB</option>
+            <option value="">选择区域后加载…</option>
           </select>
+          <div class="fhint" id="create-size-hint">根据所选区域实时查询 Azure 可用规格。标「免费试用」的为常见免费额度规格，实际以订阅为准。</div>
         </div>
       </div>
       <div class="frow">
@@ -970,14 +1021,15 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
         </div>
         <div class="fg">
           <label class="fl" for="create-disk"><span class="fl-title">磁盘 (GB)</span></label>
-          <input class="fi" type="number" id="create-disk" value="30" min="30" max="1024" />
+          <input class="fi" type="number" id="create-disk" value="64" min="64" max="1024" step="1" />
+          <div class="fhint">默认 64 GB Premium SSD（P6）。</div>
         </div>
       </div>
       <div class="fg">
         <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
         <select class="fi" id="create-ip" style="max-width:240px">
+          <option value="Dynamic" selected>动态 Dynamic（默认）</option>
           <option value="Static">静态 Static</option>
-          <option value="Dynamic">动态 Dynamic</option>
         </select>
       </div>
       <div class="fg">
@@ -1038,17 +1090,15 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
     </div>
     <div class="md-b">
       <input type="hidden" id="edit-acc-id" />
+      <input type="hidden" id="edit-acc-name" />
       <div class="fg">
-        <label class="fl" for="edit-acc-name"><span class="fl-title">显示名称</span></label>
-        <input class="fi" type="text" id="edit-acc-name" />
+        <label class="fl" for="edit-acc-email"><span class="fl-title">邮箱（展示名称） <span style="color:var(--err)">*</span></span></label>
+        <input class="fi" type="email" id="edit-acc-email" placeholder="将作为账户展示名称" required />
+        <div class="fhint">账户列表与工作台标题都会使用该邮箱。</div>
       </div>
       <div class="fg">
-        <label class="fl" for="edit-acc-email"><span class="fl-title">邮箱（可选）</span></label>
-        <input class="fi" type="email" id="edit-acc-email" placeholder="用于识别该 Azure 账户的邮箱" />
-      </div>
-      <div class="fg">
-        <label class="fl" for="edit-acc-exp"><span class="fl-title">订阅到期日（可选）</span></label>
-        <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" />
+        <label class="fl" for="edit-acc-exp"><span class="fl-title">订阅到期日 <span style="color:var(--err)">*</span></span></label>
+        <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" required />
       </div>
     </div>
     <div class="md-f">
@@ -1058,6 +1108,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<script src="/app.js?v=20260730b"></script>
+<script src="/app.js?v=20260730i"></script>
 </body>
 </html>
