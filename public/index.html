@@ -349,7 +349,7 @@
     }
     .acc-foot-note { font-size: 12px; color: var(--text-3); }
     .accounts-layout {
-      display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start;
+      display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;
     }
     .account-pane {
       background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
@@ -369,10 +369,23 @@
     .detail-head {
       display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
     }
-    .account-detail-card {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
-      box-shadow: var(--shadow); padding: 14px; margin-bottom: 14px;
+    .insight-strip {
+      display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
     }
+    .insight-item {
+      flex: 1 1 150px; min-width: 140px; text-align: left; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--bg-card); padding: 10px 12px; cursor: pointer;
+    }
+    .insight-item:hover { border-color: var(--line-3); background: #fafafa; }
+    .insight-item-k { color: var(--text-3); font-size: 11px; font-weight: 700; }
+    .insight-item-v { margin-top: 4px; font-size: 14px; font-weight: 760; color: var(--text); }
+    .insight-warning {
+      flex-basis: 100%; padding: 8px 10px; border-radius: 8px; background: #fff7ed;
+      border: 1px solid #fed7aa; color: #9a3412; font-size: 12px;
+    }
+    .vm-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+    .vm-toolbar .fi:first-child { flex: 1; }
+    .vm-toolbar .fi:last-child { width: 160px; }
     .account-detail-grid {
       display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
     }
@@ -386,16 +399,23 @@
     }
     .account-detail-value.secret { color: var(--err); }
     .account-detail-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-    .account-list .acc-card { padding: 12px; border-radius: 12px; gap: 8px; }
+    .account-list .acc-card { padding: 11px 12px; border-radius: 12px; gap: 8px; }
     .account-list .acc-card.selected { border-color: var(--pr-active); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pr-active) 12%, transparent); }
-    .account-list .acc-stats { grid-template-columns: 1fr 1fr; }
+    .account-list .acc-name { font-size: 14px; }
+    .account-list .acc-stats { display: none; }
     .account-list .acc-foot { display: none; }
+    .account-list .acc-compact {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); font-size: 12px;
+    }
+    .account-list .acc-compact strong { color: var(--text); font-weight: 700; }
     @media (max-width: 980px) {
       .accounts-layout { grid-template-columns: 1fr; }
       .account-pane { position: static; max-height: none; }
       .account-list { max-height: 360px; }
       .account-detail-grid { grid-template-columns: 1fr; }
       .detail-head { flex-direction: column; }
+      .vm-toolbar { flex-direction: column; }
+      .vm-toolbar .fi:last-child { width: 100%; }
     }
     .acc-card.dragging { opacity: 0.5; transform: none; }
     .acc-drag { cursor: grab; color: var(--text-3); font-size: 16px; line-height: 1; }
@@ -728,8 +748,8 @@
       <section class="page hidden" id="pg-accounts">
         <div class="page-head">
           <div>
-            <div class="page-title">账户 / VM</div>
-            <div class="page-sub">左侧选择账户，右侧直接查看账户信息和虚拟机</div>
+            <div class="page-title">账户工作台</div>
+            <div class="page-sub">左侧切换账户，右侧直接管理当前账户的虚拟机</div>
           </div>
           <div class="bgrp">
             <button class="btn btn-s" type="button" id="btn-azure-guide" onclick="openAzureGuide()">如何获取凭据？</button>
@@ -769,18 +789,15 @@
                 <div class="bgrp">
                   <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms">刷新</button>
                   <button class="btn btn-p btn-sm" type="button" id="btn-create-vm">创建虚拟机</button>
-                  <button class="btn btn-s btn-sm" type="button" id="btn-edit-acc">编辑</button>
-                  <button class="btn btn-dg btn-sm" type="button" id="btn-del-acc">删除账户</button>
+                  <button class="btn btn-s btn-sm" type="button" id="btn-account-details">账户详情</button>
                 </div>
               </div>
 
-              <div id="account-details" class="account-detail-card"></div>
-
               <div class="section-title-row">
-                <span>订阅状态</span>
-                <button class="btn btn-s btn-sm" type="button" id="btn-refresh-account-info">刷新账户信息</button>
+                <span>账户摘要</span>
+                <button class="btn btn-s btn-sm" type="button" id="btn-refresh-account-info">刷新</button>
               </div>
-              <div id="account-insights" class="insight-grid"></div>
+              <div id="account-insights" class="insight-strip"></div>
 
               <div class="tabs">
                 <div class="tab active" data-vtab="vms">虚拟机</div>
@@ -788,6 +805,14 @@
               </div>
 
               <div id="vtab-vms">
+                <div class="vm-toolbar">
+                  <input class="fi" id="vm-search" placeholder="搜索虚拟机名称、资源组或 IP" />
+                  <select class="fi" id="vm-status-filter">
+                    <option value="all">全部状态</option>
+                    <option value="running">运行中</option>
+                    <option value="stopped">已停止</option>
+                  </select>
+                </div>
                 <div class="tw">
                   <table>
                     <thead>
@@ -1253,6 +1278,31 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
       <button class="btn btn-g" type="button" data-close="mo-export-accounts">取消</button>
       <button class="btn btn-s" type="button" id="btn-export-accounts-safe">导出脱敏</button>
       <button class="btn btn-dg" type="button" id="btn-export-accounts-full">导出含密钥</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: 账户详细信息 -->
+<div id="mo-account-details" class="mo hidden">
+  <div class="md md-xl">
+    <div class="md-h">
+      <div>
+        <span class="md-ttl" id="detail-modal-title">账户详细信息</span>
+        <div class="muted small" id="detail-modal-sub" style="margin-top:3px"></div>
+      </div>
+      <button class="md-x" data-close="mo-account-details" type="button">×</button>
+    </div>
+    <div class="md-b">
+      <div id="detail-modal-loading" class="muted small hidden">正在读取账户信息…</div>
+      <div id="detail-modal-content"></div>
+    </div>
+    <div class="md-f" style="justify-content:space-between">
+      <button class="btn btn-s" type="button" id="btn-copy-account-details">复制完整信息</button>
+      <div class="bgrp">
+        <button class="btn btn-g" type="button" data-close="mo-account-details">关闭</button>
+        <button class="btn btn-s" type="button" id="btn-edit-acc">编辑账户</button>
+        <button class="btn btn-dg" type="button" id="btn-del-acc">删除账户</button>
+      </div>
     </div>
   </div>
 </div>

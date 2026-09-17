@@ -16,6 +16,9 @@ const S = {
   dragAccountId: null,
   accountInsights: {},
   accountDetails: {},
+  revealedAccountSecret: false,
+  vmSearch: '',
+  vmStatusFilter: 'all',
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -225,7 +228,6 @@ function showAccountListView() {
     $('account-empty')?.classList.add('hidden');
     $('view-vms')?.classList.remove('hidden');
     showAccountDetailFromCache(acc);
-    if (!S.accountDetails[acc.id]) loadAccountDetail(acc.id);
   } else {
     S.selectedAccId = null;
     $('view-vms')?.classList.add('hidden');
@@ -327,30 +329,13 @@ function accountCardHtml(a) {
         </div>
         ${expiryBadge(a.expirationDate)}
       </div>
-      <div class="acc-stats">
-        <div class="acc-stat">
-          <div class="acc-stat-k">机器数量</div>
-          <div class="acc-stat-v">${esc(vmText)}</div>
-        </div>
-        <div class="acc-stat">
-          <div class="acc-stat-k">AI 配额层级</div>
-          <div class="acc-stat-v">${esc(quota)}</div>
-        </div>
-        <div class="acc-stat" style="grid-column:1/-1">
-          <div class="acc-stat-k">消费</div>
-          <div class="acc-stat-v">${esc(accountCostText(a))}</div>
-        </div>
-        <div class="acc-stat" style="grid-column:1/-1">
-          <div class="acc-stat-k">订阅到期</div>
-          <div class="acc-stat-v ${expCls}">${esc(expiryStatText(a.expirationDate))}</div>
-        </div>
+      <div class="acc-compact">
+        <span>VM <strong>${esc(vmText)}</strong></span>
+        <span>消费 <strong>${esc(accountCostText(a).replace('本月 ', ''))}</strong></span>
+        <span>Tier <strong>${esc(quota)}</strong></span>
       </div>
-      <div class="acc-foot">
-        <span class="acc-foot-note">点击卡片进入工作台</span>
-        <div class="bgrp">
-          <button class="btn btn-s btn-sm" onclick='openEditAccount(${jsq(a.id)}, event)'>编辑</button>
-          <button class="btn btn-p btn-sm" onclick='openVmView(${jsq(a.id)}, event)'>打开</button>
-        </div>
+      <div class="acc-compact">
+        <span>${esc(expiryStatText(a.expirationDate))}</span>
       </div>
     </div>`;
 }
@@ -359,58 +344,93 @@ function accountDetailValue(value) {
   return value === null || value === undefined || value === '' ? '-' : String(value);
 }
 
-function renderAccountDetail(account) {
+function updateAccountHeader(account) {
   if (!account) return;
   const detail = S.accountDetails[account.id] || account;
   const st = S.accountStats[account.id] || {};
   const title = accountDisplayName(detail);
   const subscriptionName = detail.subscriptionName || st.subscriptionDisplayName || '未获取';
   const subscriptionState = detail.subscriptionState || st.state || '未获取';
-  const quota = detail.quotaTier || st.quotaTier || '未获取';
-  const costMtd = detail.costMtd ?? '未获取';
-  const costCurrency = detail.costCurrency ? ` ${detail.costCurrency}` : '';
-  const costAcc = detail.costAcc ?? '未获取';
-  const secret = detail.clientSecret || '';
-  const detailItems = [
-    ['账户名称', title],
-    ['邮箱', detail.email || title],
-    ['订阅名称', subscriptionName],
-    ['订阅状态', subscriptionState],
-    ['Client ID', detail.clientId || '-'],
-    ['Tenant ID', detail.tenantId || '-'],
-    ['Subscription ID', detail.subscriptionId || '-', ''],
-    ['Client Secret', secret || '未读取', 'secret'],
-    ['订阅到期', detail.expirationDate || '未设置'],
-    ['AI 配额层级', quota],
-    ['本月消费', `${costMtd}${costMtd === '未获取' ? '' : costCurrency}`],
-    ['累计消费', `${costAcc}${costAcc === '未获取' ? '' : costCurrency}`],
-  ];
-  const warning = detail.costWarning || st.warning || '';
   $('vm-acc-title').textContent = title;
   $('vm-acc-sub').textContent = [
     subscriptionName,
     subscriptionState,
     detail.expirationDate || null,
   ].filter(Boolean).join(' · ') || 'Azure 订阅';
-  const host = $('account-details');
-  if (!host) return;
-  host.innerHTML = `
-    <div class="section-title-row" style="margin-bottom:10px">
-      <span>账户详细信息</span>
-      <button class="btn btn-s btn-sm" onclick='copyAccountDetails(${jsq(account.id)})'>复制完整信息</button>
-    </div>
+}
+
+function mergedAccountDetail(account) {
+  if (!account) return null;
+  const saved = S.accountDetails[account.id] || {};
+  const st = S.accountStats[account.id] || {};
+  return {
+    ...account,
+    ...saved,
+    subscriptionName: saved.subscriptionName || st.subscriptionDisplayName || account.subscriptionName || '未获取',
+    subscriptionState: saved.subscriptionState || st.state || account.subscriptionState || '未获取',
+    quotaTier: saved.quotaTier || st.quotaTier || account.quotaTier || '未获取',
+    costWarning: saved.costWarning || account.costWarning || st.warning || '',
+  };
+}
+
+function renderAccountDetailsModal(account) {
+  if (!account) return;
+  const detail = mergedAccountDetail(account);
+  const modal = $('mo-account-details');
+  if (!modal) return;
+  const secret = detail.clientSecret || '尚未读取';
+  const secretText = S.revealedAccountSecret ? secret : '••••••••••••';
+  const currency = detail.costCurrency ? ` ${detail.costCurrency}` : '';
+  const mtd = detail.costMtd ?? '未获取';
+  const acc = detail.costAcc ?? '未获取';
+  const history = detail.costHistory ?? '未获取';
+  const updatedAt = detail.costUpdatedAt ? new Date(detail.costUpdatedAt).toLocaleString() : '未查询';
+  const rawWarning = detail.costWarning || '';
+  const warning = rawWarning.length > 180 ? `${rawWarning.slice(0, 180)}…` : rawWarning;
+  const detailItems = [
+    ['账户名称', accountDisplayName(detail)],
+    ['邮箱', detail.email || accountDisplayName(detail)],
+    ['订阅名称', detail.subscriptionName || '未获取'],
+    ['订阅状态', detail.subscriptionState || '未获取'],
+    ['Client ID', detail.clientId || '-'],
+    ['Tenant ID', detail.tenantId || '-'],
+    ['Subscription ID', detail.subscriptionId || '-'],
+    ['订阅到期', detail.expirationDate || '未设置'],
+  ];
+  $('detail-modal-title').textContent = accountDisplayName(detail);
+  $('detail-modal-sub').textContent = [detail.subscriptionName, detail.subscriptionState].filter(Boolean).join(' · ') || 'Azure 账户';
+  $('detail-modal-loading')?.classList.add('hidden');
+  $('detail-modal-content').innerHTML = `
     <div class="account-detail-grid">
-      ${detailItems.map(([key, value, cls]) => `
+      ${detailItems.map(([key, value]) => `
         <div class="account-detail-item">
           <div class="account-detail-key">${esc(key)}</div>
-          <div class="account-detail-value ${cls || ''}">${esc(value)}</div>
+          <div class="account-detail-value">${esc(value)}</div>
         </div>`).join('')}
+      <div class="account-detail-item" style="grid-column:1/-1">
+        <div class="account-detail-key">Client Secret</div>
+        <div class="account-detail-value secret" id="detail-secret-value">${esc(secretText)}</div>
+        <div class="account-detail-actions">
+          <button class="btn btn-s btn-sm" type="button" id="btn-toggle-account-secret">${S.revealedAccountSecret ? '隐藏' : '显示'}</button>
+          <button class="btn btn-s btn-sm" type="button" id="btn-copy-account-secret">复制密钥</button>
+        </div>
+      </div>
+    </div>
+    <div class="section-title-row" style="margin-top:16px">
+      <span>成本与 AI 配额</span>
+      <span class="bgrp"><span class="muted small">更新于 ${esc(updatedAt)}</span><button class="btn btn-s btn-sm" type="button" id="btn-refresh-account-info-modal">刷新</button></span>
+    </div>
+    <div class="account-detail-grid" style="margin-top:8px">
+      <div class="account-detail-item"><div class="account-detail-key">本月消费</div><div class="account-detail-value">${esc(mtd)}${esc(currency)}</div></div>
+      <div class="account-detail-item"><div class="account-detail-key">累计消费</div><div class="account-detail-value">${esc(acc)}${esc(currency)}</div></div>
+      <div class="account-detail-item"><div class="account-detail-key">历史消费</div><div class="account-detail-value">${esc(history)}${esc(currency)}</div></div>
+      <div class="account-detail-item"><div class="account-detail-key">AI 配额层级</div><div class="account-detail-value">${esc(detail.quotaTier || '未获取')}</div></div>
     </div>
     ${warning ? `<div class="err-box" style="margin-top:10px">${esc(warning)}</div>` : ''}`;
 }
 
 function showAccountDetailFromCache(account) {
-  renderAccountDetail(account);
+  updateAccountHeader(account);
 }
 
 async function loadAccountDetail(accountId) {
@@ -430,7 +450,9 @@ async function loadAccountDetail(accountId) {
       account.costUpdatedAt = detail.costUpdatedAt;
       account.costWarning = detail.costWarning;
     }
-    if (S.selectedAccId === accountId) renderAccountDetail(account || detail);
+    if (S.selectedAccId === accountId && !$('mo-account-details')?.classList.contains('hidden')) {
+      renderAccountDetailsModal(account || detail);
+    }
     return detail;
   } catch (e) {
     toast(`加载账户详情失败: ${e.message}`, 'error');
@@ -438,12 +460,60 @@ async function loadAccountDetail(accountId) {
   }
 }
 
+function closeAccountDetailsModal() {
+  S.revealedAccountSecret = false;
+  if (S.selectedAccId) delete S.accountDetails[S.selectedAccId];
+  if ($('detail-modal-content')) $('detail-modal-content').innerHTML = '';
+  closeModal('mo-account-details');
+}
+
+async function openAccountDetails(accountId) {
+  const account = S.accounts.find((item) => item.id === accountId);
+  if (!account) return;
+  S.revealedAccountSecret = false;
+  if (S.accountDetails[accountId]) {
+    $('detail-modal-loading')?.classList.add('hidden');
+    $('detail-modal-content').innerHTML = '';
+    renderAccountDetailsModal(account);
+  } else {
+    $('detail-modal-loading')?.classList.remove('hidden');
+    $('detail-modal-content').innerHTML = '';
+  }
+  openModal('mo-account-details');
+  const detail = await loadAccountDetail(accountId);
+  if (detail) {
+    renderAccountDetailsModal(account);
+  } else {
+    $('detail-modal-loading')?.classList.add('hidden');
+    $('detail-modal-content').innerHTML = '<div class="err-box">账户详情加载失败，请关闭后重试。</div>';
+  }
+}
+
+async function toggleAccountSecret() {
+  const accountId = S.selectedAccId;
+  if (!accountId) return;
+  if (!S.accountDetails[accountId]) await loadAccountDetail(accountId);
+  S.revealedAccountSecret = !S.revealedAccountSecret;
+  renderAccountDetailsModal(S.accounts.find((item) => item.id === accountId));
+}
+window.toggleAccountSecret = toggleAccountSecret;
+
+async function copyAccountSecret() {
+  const detail = S.accountDetails[S.selectedAccId];
+  if (!detail?.clientSecret) return toast('暂未读取到密钥', 'error');
+  await copyText(detail.clientSecret);
+}
+window.copyAccountSecret = copyAccountSecret;
+
 async function copyAccountDetails(accountId) {
-  const detail = S.accountDetails[accountId] || S.accounts.find((item) => item.id === accountId);
+  let detail = S.accountDetails[accountId] || S.accounts.find((item) => item.id === accountId);
+  if (detail && detail.clientSecret === undefined) detail = await loadAccountDetail(accountId) || detail;
   if (!detail) return;
   const lines = [
     `账户名称: ${accountDisplayName(detail)}`,
     `邮箱: ${detail.email || ''}`,
+    `订阅名称: ${detail.subscriptionName || ''}`,
+    `订阅状态: ${detail.subscriptionState || ''}`,
     `Subscription ID: ${detail.subscriptionId || ''}`,
     `Client ID: ${detail.clientId || ''}`,
     `Client Secret: ${detail.clientSecret || ''}`,
@@ -457,11 +527,15 @@ window.copyAccountDetails = copyAccountDetails;
 async function refreshAccountInfo(accountId) {
   if (!accountId) return;
   await Promise.all([
-    loadAccountDetail(accountId),
     loadAccountStats(accountId, { force: true }),
     loadAccountInsights(accountId, true),
   ]);
-  renderAccountDetail(S.accounts.find((item) => item.id === accountId) || S.accountDetails[accountId]);
+  const account = S.accounts.find((item) => item.id === accountId);
+  updateAccountHeader(account);
+  if (!$('mo-account-details')?.classList.contains('hidden')) {
+    await loadAccountDetail(accountId);
+    renderAccountDetailsModal(account);
+  }
 }
 
 function paintAccGrid() {
@@ -528,8 +602,10 @@ async function loadAccountStats(accountId, { force = false } = {}) {
       quotaTier: prev?.quotaTier,
     };
   }
+  const account = S.accounts.find((item) => item.id === accountId);
   if (S.selectedAccId === accountId) {
-    renderAccountDetail(S.accounts.find((item) => item.id === accountId));
+    updateAccountHeader(account);
+    if (!$('mo-account-details')?.classList.contains('hidden')) renderAccountDetailsModal(account);
   }
   paintAccGrid();
 }
@@ -627,7 +703,8 @@ function renderAccountInsights(accountId) {
   const history = data.history ?? account?.costHistory;
   const quota = data.quotaTier || account?.quotaTier || '未获取';
   const warningText = data.warning || account?.costWarning || '';
-  const warning = warningText ? `<div class="small muted" style="margin-top:4px">${esc(warningText)}</div>` : '';
+  const shortWarning = warningText.length > 180 ? `${warningText.slice(0, 180)}…` : warningText;
+  const warning = shortWarning ? `<div class="small muted" style="margin-top:4px">${esc(shortWarning)}</div>` : '';
   const costText = mtd !== null && mtd !== undefined && mtd !== ''
     ? `本月 ${mtd}${unit}`
     : (loading || '未获取');
@@ -637,12 +714,28 @@ function renderAccountInsights(accountId) {
   const historyText = history !== null && history !== undefined && history !== ''
     ? `${history}${unit}`
     : '未获取';
+  const updateText = account?.costUpdatedAt
+    ? new Date(account.costUpdatedAt).toLocaleString()
+    : (loading ? '查询中…' : '尚未查询');
   host.innerHTML = `
-    <div class="acc-stat"><div class="acc-stat-k">AI 配额层级</div><div class="acc-stat-v">${esc(quota)}</div></div>
-    <div class="acc-stat"><div class="acc-stat-k">本月消费</div><div class="acc-stat-v">${esc(costText)}</div>${warning}</div>
-    <div class="acc-stat"><div class="acc-stat-k">近一年累计</div><div class="acc-stat-v">${esc(accText)}</div></div>
-    <div class="acc-stat"><div class="acc-stat-k">历史消费</div><div class="acc-stat-v">${esc(historyText)}</div><div><button class="btn btn-s btn-sm" style="margin-top:8px" id="btn-refresh-cost">刷新消费</button></div></div>`;
+    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
+      <div class="insight-item-k">AI 配额</div><div class="insight-item-v">${esc(quota)}</div>
+    </button>
+    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
+      <div class="insight-item-k">本月消费</div><div class="insight-item-v">${esc(mtd !== null && mtd !== undefined && mtd !== '' ? `${mtd}${unit}` : (loading || '未获取'))}</div>
+    </button>
+    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
+      <div class="insight-item-k">累计消费</div><div class="insight-item-v">${esc(accText)}</div>
+    </button>
+    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
+      <div class="insight-item-k">历史消费</div><div class="insight-item-v">${esc(historyText)}</div>
+    </button>
+    <div class="insight-item" style="cursor:default">
+      <div class="insight-item-k">数据更新时间</div><div class="insight-item-v">${esc(updateText)}</div>
+    </div>
+    ${warning ? `<div class="insight-warning">${esc(shortWarning)}</div>` : ''}`;
 }
+window.openAccountDetails = openAccountDetails;
 
 async function loadAccountInsights(accountId, force = false) {
   if (!accountId) return;
@@ -670,7 +763,6 @@ async function loadAccountInsights(accountId, force = false) {
   try {
     const data = await api('GET', `/api/accounts/${accountId}/cost`);
     S.accountInsights[accountId] = { ...data, loading: false, loaded: true };
-    const account = S.accounts.find((item) => item.id === accountId);
     if (account) {
       account.costMtd = data.mtd;
       account.costAcc = data.acc;
@@ -684,7 +776,8 @@ async function loadAccountInsights(accountId, force = false) {
     toast(`消费查询失败: ${e.message}`, 'error');
   }
   renderAccountInsights(accountId);
-  renderAccountDetail(S.accounts.find((item) => item.id === accountId) || S.accountDetails[accountId]);
+  updateAccountHeader(account);
+  if (!$('mo-account-details')?.classList.contains('hidden')) renderAccountDetailsModal(account);
   paintAccGrid();
 }
 
@@ -697,6 +790,10 @@ async function openVmView(accId, e) {
   if (e) e.stopPropagation();
   S.selectedAccId = accId;
   S.activeVTab = 'vms';
+  S.vmSearch = '';
+  S.vmStatusFilter = 'all';
+  if ($('vm-search')) $('vm-search').value = '';
+  if ($('vm-status-filter')) $('vm-status-filter').value = 'all';
   document.querySelectorAll('.tab[data-vtab]').forEach(x => {
     x.classList.toggle('active', x.dataset.vtab === 'vms');
   });
@@ -724,7 +821,6 @@ async function openVmView(accId, e) {
   await Promise.all([
     loadVms(),
     loadRegions(),
-    loadAccountDetail(accId),
     loadAccountStats(accId),
     loadAccountInsights(accId),
   ]);
@@ -769,8 +865,24 @@ function formatUptime(vm) {
   };
 }
 
+function filteredVms() {
+  const query = S.vmSearch.trim().toLowerCase();
+  return S.vms.filter((vm) => {
+    const status = String(vm.status || '').toLowerCase();
+    const matchesStatus = S.vmStatusFilter === 'all'
+      || (S.vmStatusFilter === 'running' && status.includes('running'))
+      || (S.vmStatusFilter === 'stopped' && (status.includes('stopped') || status.includes('deallocat')));
+    if (!matchesStatus) return false;
+    if (!query) return true;
+    return [vm.name, vm.resourceGroup, vm.publicIp, vm.location, vm.vmSize]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+}
+
 function renderVms() {
   const tb = $('vm-tbody');
+  const rows = filteredVms();
   if (!S.vms.length) {
     tb.innerHTML = `<tr><td colspan="7" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
@@ -781,7 +893,12 @@ function renderVms() {
     return;
   }
 
-  tb.innerHTML = S.vms.map(vm => {
+  if (!rows.length) {
+    tb.innerHTML = `<tr><td colspan="7" style="padding:36px"><div class="empty" style="border:none;background:transparent;padding:12px"><h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p></div></td></tr>`;
+    return;
+  }
+
+  tb.innerHTML = rows.map(vm => {
     const ps = vm.status || '-';
     const psLower = String(ps).toLowerCase();
     const bc = psLower.includes('running')
@@ -1522,6 +1639,7 @@ function openEditAccount(accountId, e) {
   if ($('edit-acc-name')) $('edit-acc-name').value = acc.name || '';
   if ($('edit-acc-email')) $('edit-acc-email').value = acc.email || accountDisplayName(acc) || '';
   $('edit-acc-exp').value = acc.expirationDate || '';
+  if (!$('mo-account-details')?.classList.contains('hidden')) closeAccountDetailsModal();
   openModal('mo-edit-acc');
 }
 window.openEditAccount = openEditAccount;
@@ -1546,8 +1664,8 @@ async function saveEditAccount() {
     S.accounts = await api('GET', '/api/accounts');
     const acc = S.accounts.find(a => a.id === S.selectedAccId) || S.accounts.find(a => a.id === accountId);
     if (acc && S.selectedAccId === acc.id) {
-      await loadAccountDetail(acc.id);
-      showAccountDetailFromCache(acc);
+      updateAccountHeader(acc);
+      if (!$('mo-account-details')?.classList.contains('hidden')) await loadAccountDetail(acc.id);
     }
     refreshOverview();
     renderAccGrid();
@@ -1564,6 +1682,7 @@ async function deleteSelectedAccount() {
   if (!confirm(`确认删除账户「${accountDisplayName(acc)}」？`)) return;
   try {
     await api('DELETE', `/api/accounts/${S.selectedAccId}`);
+    if (!$('mo-account-details')?.classList.contains('hidden')) closeAccountDetailsModal();
     S.selectedAccId = null;
     S.accounts = await api('GET', '/api/accounts');
     refreshOverview();
@@ -1680,12 +1799,20 @@ function bindUI() {
         toast('请填写邮箱和订阅到期日以完成添加', 'error');
         return;
       }
+      if (modalId === 'mo-account-details') {
+        closeAccountDetailsModal();
+        return;
+      }
       closeModal(modalId);
       return;
     }
     if (t.classList.contains('mo')) {
       if (t.id === 'mo-add-expiry' && S.pendingNewAccountId) {
         toast('请填写邮箱和订阅到期日以完成添加', 'error');
+        return;
+      }
+      if (t.id === 'mo-account-details') {
+        closeAccountDetailsModal();
         return;
       }
       closeModal(t.id);
@@ -1750,6 +1877,11 @@ function bindUI() {
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void loadVms().then(() => toast('虚拟机已刷新'));
     if (t.closest('#btn-refresh-account-info')) return void refreshAccountInfo(S.selectedAccId).then(() => toast('账户信息已刷新'));
+    if (t.closest('#btn-refresh-account-info-modal')) return void refreshAccountInfo(S.selectedAccId).then(() => toast('账户信息已刷新'));
+    if (t.closest('#btn-account-details')) return void openAccountDetails(S.selectedAccId);
+    if (t.closest('#btn-toggle-account-secret')) return void toggleAccountSecret();
+    if (t.closest('#btn-copy-account-secret')) return void copyAccountSecret();
+    if (t.closest('#btn-copy-account-details')) return void copyAccountDetails(S.selectedAccId);
     if (t.closest('#btn-refresh-overview')) return void refreshOverview().then(() => toast('已刷新'));
     if (t.closest('#btn-parse-json')) return void parseJsonFromForm();
     if (t.closest('#btn-check-add')) return void checkAddAccount();
@@ -1759,7 +1891,6 @@ function bindUI() {
     if (t.closest('#btn-del-acc')) return void deleteSelectedAccount();
     if (t.closest('#btn-save-script')) return void saveStartupScript();
     if (t.closest('#btn-save-global-ssh')) return void saveGlobalSshSettings();
-    if (t.closest('#btn-refresh-cost')) return void refreshAccountCost(S.selectedAccId);
     if (t.closest('#btn-import-accounts')) return void $('account-import-file')?.click();
     if (t.closest('#btn-export-accounts')) return void openModal('mo-export-accounts');
     if (t.closest('#btn-export-accounts-safe')) return void exportAccounts(false);
@@ -1787,6 +1918,14 @@ function bindUI() {
   });
   on('account-import-file', 'change', (e) => {
     importAccountsFromFile(e.target?.files?.[0]);
+  });
+  on('vm-search', 'input', (e) => {
+    S.vmSearch = e.target?.value || '';
+    renderVms();
+  });
+  on('vm-status-filter', 'change', (e) => {
+    S.vmStatusFilter = e.target?.value || 'all';
+    renderVms();
   });
 
   const accGrid = $('acc-grid');

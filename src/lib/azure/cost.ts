@@ -149,7 +149,7 @@ async function queryCost(
       }
 
       const responseText = await response.text();
-      lastError = `HTTP ${response.status}${responseText ? `: ${responseText.slice(0, 240)}` : ""}`;
+      lastError = `HTTP ${response.status}`;
 
       if (response.status === 401 || response.status === 403) {
         return { cost: "无权限(可能为赞助/学生订阅)", currency: "", warning: "当前服务主体没有 Cost Management 查询权限" };
@@ -163,7 +163,13 @@ async function queryCost(
       }
 
       if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
-        return { cost: "未获取", currency: "", warning: `查询失败：${lastError}` };
+        return {
+          cost: "未获取",
+          currency: "",
+          warning: isRetryableStatus(response.status)
+            ? "Azure 成本服务暂时不可用或触发限流，已保留上次结果"
+            : `Cost Management 查询失败（HTTP ${response.status}）`,
+        };
       }
 
       const retryAfter = parseRetryAfterMs(response.headers.get("Retry-After"));
@@ -172,7 +178,10 @@ async function queryCost(
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       if (attempt === COST_MAX_ATTEMPTS - 1) {
-        return { cost: "未获取", currency: "", warning: `网络或服务异常：${lastError}` };
+        const warning = lastError.startsWith("azure_auth_failed:")
+          ? "Azure 认证失败，请检查租户、Client ID 和 Client Secret"
+          : "网络或服务异常，已保留上次结果";
+        return { cost: "未获取", currency: "", warning };
       }
       await delay(Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt));
     }
