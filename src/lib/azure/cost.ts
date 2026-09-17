@@ -6,6 +6,30 @@ import type { AzureCostResult } from "../../types";
 const COST_MAX_ATTEMPTS = 5;
 const COST_RETRY_BASE_MS = 8000;
 const COST_RETRY_MAX_MS = 90_000;
+/**
+ * Cool-down before the first Cost Management call. Cost Management throttles
+ * aggressively and a switch usually fires several ARM calls just before this,
+ * so querying immediately is the main cause of avoidable 429s.
+ */
+const COST_COOLDOWN_MS = 2500;
+
+/** How the query ended, so the UI can distinguish "really 0" from "could not ask". */
+export type CostStatus = "ok" | "cached" | "unsupported" | "denied" | "unavailable";
+
+export interface CostCacheInput {
+  mtd?: string | null;
+  acc?: string | null;
+  history?: string | null;
+  currency?: string | null;
+  /** ISO timestamp of the cached result; drives the same-month history reuse. */
+  updatedAt?: string | null;
+}
+
+export interface CostQueryOptions {
+  /** Bulk callers (refresh-all) use fewer attempts so one bad account cannot stall the batch. */
+  maxAttempts?: number;
+  cooldownMs?: number;
+}
 
 interface CostResponse {
   properties?: {
@@ -19,6 +43,8 @@ interface CostQueryResult {
   currency: string;
   warning: string | null;
   failed: boolean;
+  /** HTTP status when the call was rejected, so callers can classify the reason. */
+  httpStatus?: number | null;
 }
 
 interface AzureErrorPayload {
@@ -83,16 +109,34 @@ export async function getQuotaTier(
   }
 }
 
+/**
+ * Query month-to-date / accumulated spend.
+ *
+ * Ported behaviour (a reference desktop tool survives the same API much better):
+ * - a failed query is NOT fatal. Cost Management rejects the custom-timeframe
+ *   "accumulated" query on many subscription types with HTTP 400 while
+ *   month-to-date works fine, so a failure degrades to the cached value or to a
+ *   readable status instead of blanking the whole panel.
+ * - when the cached result is from the current month its `history` is trusted and
+ *   `acc = mtd + history`, which skips the fragile second query entirely.
+ * - `acc` is monotonic: a fresh value never reports less than the last known one.
+ */
 export async function getAzureCosts(
   client: AzureArmClient,
   subscriptionId: string,
   expirationDate: string | null,
-  cached?: {
-    acc?: string | null;
-    history?: string | null;
-  },
+  cached?: CostCacheInput,
+  options: CostQueryOptions = {},
 ): Promise<AzureCostResult> {
-  await delay(1000);
+  const cooldownMs = options.cooldownMs ?? COST_COOLDOWN_MS;
+  if (cooldownMs > 0) await delay(cooldownMs);
+
+  const maxAttempts = options.maxAttempts ?? COST_MAX_ATTEMPTS;
+  const cachedMtd = numericOrNull(cached?.mtd);
+  const cachedAcc = numericOrNull(cached?.acc);
+  const cachedHistory = numericOrNull(cached?.history);
+  const cacheIsCurrentMonth = isSameMonth(cached?.updatedAt);
+  const warnings: string[] = [];
 
   const mtd = await queryCost(client, subscriptionId, {
     type: "Usage",
@@ -103,25 +147,50 @@ export async function getAzureCosts(
         totalCost: { name: "PreTaxCost", function: "Sum" },
       },
     },
-  });
+  }, maxAttempts);
 
-  if (mtd.failed) {
-    throw new CostQueryError(mtd.warning ?? "本月消费查询失败", { code: "CostQueryFailed" });
+  let mtdText: string;
+  let status: CostStatus = "ok";
+  let freshMtd = false;
+
+  if (mtd.failed || !isNumericCost(mtd.cost)) {
+    const reason = mtd.warning ?? "本月消费查询失败";
+    if (cachedMtd !== null) {
+      mtdText = cached!.mtd as string;
+      status = "cached";
+      warnings.push(`本月消费：${reason}，已沿用上一次成功结果`);
+    } else {
+      // Nothing to fall back on: report the reason in the cell rather than failing.
+      const label = costStatusLabel(mtd);
+      return {
+        mtd: label,
+        acc: label,
+        history: "未获取",
+        currency: "",
+        queriedAt: cached?.updatedAt ?? nowIso(),
+        warning: reason,
+        status: costStatusFrom(mtd),
+      };
+    }
+  } else {
+    mtdText = mtd.cost;
+    freshMtd = true;
   }
 
-  const warnings: string[] = [];
-  if (mtd.warning) warnings.push(`本月消费：${mtd.warning}`);
-
-  if (!isNumericCost(mtd.cost)) {
-    throw new CostQueryError(mtd.warning ?? "本月消费未返回有效金额");
-  }
-
-  let accumulated = mtd.cost;
+  let accumulated = mtdText;
   let history = "0.00";
-  let currency = mtd.currency;
+  let currency = mtd.currency || cached?.currency || "";
   const periodStart = resolveHistoryStart(expirationDate);
 
-  if (periodStart) {
+  if (!periodStart) {
+    warnings.push("未设置订阅到期日，累计消费暂按本月消费展示");
+  } else if (cacheIsCurrentMonth && cachedHistory !== null) {
+    // Same month + known history => acc is just the sum. This avoids the second
+    // query, which is the one that commonly fails.
+    const total = Number(mtdText) + cachedHistory;
+    accumulated = formatCost(total);
+    history = formatCost(cachedHistory);
+  } else {
     const yearly = await queryCost(client, subscriptionId, {
       type: "Usage",
       timeframe: "Custom",
@@ -135,38 +204,86 @@ export async function getAzureCosts(
           totalCost: { name: "PreTaxCost", function: "Sum" },
         },
       },
-    });
+    }, maxAttempts);
 
     if (yearly.failed || !isNumericCost(yearly.cost)) {
-      warnings.push(`累计消费：${yearly.warning ?? "未获取"}`);
-      if (cached?.acc && isNumericCost(cached.acc)) {
-        accumulated = cached.acc;
-        history = cached.history && isNumericCost(cached.history) ? cached.history : "未获取";
-        warnings.push("累计消费刷新失败，已沿用上一次成功结果");
+      const reason = yearly.warning ?? "未获取";
+      if (cachedAcc !== null) {
+        accumulated = cached!.acc as string;
+        history = cachedHistory !== null ? formatCost(cachedHistory) : "未获取";
+        status = status === "ok" ? "cached" : status;
+        warnings.push(`累计消费：${reason}，已沿用上一次成功结果`);
       } else {
-        accumulated = mtd.cost;
-        history = "0.00";
+        accumulated = mtdText;
+        // Deliberately NOT "0.00". A fabricated zero would be persisted, and the
+        // next run would treat it as a known history and take the `acc = mtd +
+        // history` shortcut forever, silently pinning the accumulated figure to
+        // the month-to-date value. An unknown history must stay unknown so the
+        // yearly query is attempted again on the next refresh.
+        history = "未获取";
         warnings.push("累计消费暂不可用，当前累计值仅展示本月消费");
       }
     } else {
-      const mtdValue = Number(mtd.cost);
+      const mtdValue = Number(mtdText);
       const yearlyValue = Math.max(Number(yearly.cost), mtdValue);
       accumulated = formatCost(yearlyValue);
       history = formatCost(Math.max(0, yearlyValue - mtdValue));
       currency = yearly.currency || currency;
     }
-  } else {
-    warnings.push("未设置订阅到期日，累计消费暂按本月消费展示");
+  }
+
+  // Never report a lower accumulated figure than one already known to be true.
+  if (cachedAcc !== null) {
+    const current = numericOrNull(accumulated);
+    if (current !== null && current < cachedAcc) {
+      accumulated = cached!.acc as string;
+      if (cachedHistory !== null) history = formatCost(cachedHistory);
+    }
   }
 
   return {
-    mtd: mtd.cost,
+    mtd: mtdText,
     acc: accumulated,
     history,
     currency,
-    queriedAt: nowIso(),
+    // Only claim freshness when month-to-date actually came back this time.
+    queriedAt: freshMtd ? nowIso() : (cached?.updatedAt ?? nowIso()),
     warning: warnings.length ? warnings.join("；") : null,
+    status,
   };
+}
+
+function numericOrNull(value: string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Cached history is only trustworthy while the cached result is from this month. */
+function isSameMonth(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return date.getUTCFullYear() === now.getUTCFullYear() && date.getUTCMonth() === now.getUTCMonth();
+}
+
+function costStatusFrom(result: CostQueryResult): CostStatus {
+  const reason = `${result.warning ?? ""}`.toLowerCase();
+  if (result.httpStatus === 401 || result.httpStatus === 403 || reason.includes("无权限")) return "denied";
+  if (result.httpStatus === 400 || result.httpStatus === 404 || result.httpStatus === 422) return "unsupported";
+  return "unavailable";
+}
+
+function costStatusLabel(result: CostQueryResult): string {
+  switch (costStatusFrom(result)) {
+    case "denied":
+      return "无权限（可能为赞助/学生订阅）";
+    case "unsupported":
+      return "该订阅不支持查询";
+    default:
+      return "未获取";
+  }
 }
 
 function resolveHistoryStart(expirationDate: string | null): string | null {
@@ -189,11 +306,13 @@ async function queryCost(
   client: AzureArmClient,
   subscriptionId: string,
   payload: unknown,
+  maxAttempts: number = COST_MAX_ATTEMPTS,
 ): Promise<CostQueryResult> {
   const path = `/subscriptions/${subscriptionId}/providers/Microsoft.CostManagement/query`;
   let lastWarning = "";
+  let lastStatus: number | null = null;
 
-  for (let attempt = 0; attempt < COST_MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const response = await client.requestResponse("POST", path, {
         apiVersion: AZURE_API_VERSIONS.costManagement,
@@ -216,6 +335,7 @@ async function queryCost(
           currency: "",
           warning: "Azure 认证失败或查看费用权限未启用",
           failed: true,
+          httpStatus: 401,
         };
       }
       if (response.status === 403) {
@@ -224,6 +344,7 @@ async function queryCost(
           currency: "",
           warning: "权限不足：需要 Cost Management Reader 或对应计费权限",
           failed: true,
+          httpStatus: 403,
         };
       }
       if (response.status === 400 || response.status === 404 || response.status === 422) {
@@ -232,15 +353,17 @@ async function queryCost(
           currency: "",
           warning: classifyCostError(response.status, azureError),
           failed: true,
+          httpStatus: response.status,
         };
       }
+      lastStatus = response.status;
 
       lastWarning = isRetryableStatus(response.status)
         ? `Azure 成本服务暂时不可用或触发限流（HTTP ${response.status}）`
         : `Cost Management 查询失败（HTTP ${response.status}）`;
 
-      if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
-        return { cost: "未获取", currency: "", warning: lastWarning, failed: true };
+      if (!isRetryableStatus(response.status) || attempt === maxAttempts - 1) {
+        return { cost: "未获取", currency: "", warning: lastWarning, failed: true, httpStatus: response.status };
       }
 
       const retryAfter = parseRetryAfterMs(
@@ -251,7 +374,7 @@ async function queryCost(
       await delay(retryAfter ?? backoff);
     } catch (error) {
       lastWarning = error instanceof Error ? error.message : String(error);
-      if (attempt === COST_MAX_ATTEMPTS - 1) {
+      if (attempt === maxAttempts - 1) {
         return {
           cost: "未获取",
           currency: "",
@@ -259,13 +382,14 @@ async function queryCost(
             ? "Azure 认证失败，请检查租户、Client ID 和 Client Secret"
             : "网络或服务异常，未更新上次成功结果",
           failed: true,
+          httpStatus: null,
         };
       }
       await delay(Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt));
     }
   }
 
-  return { cost: "未获取", currency: "", warning: lastWarning || "查询失败", failed: true };
+  return { cost: "未获取", currency: "", warning: lastWarning || "查询失败", failed: true, httpStatus: lastStatus };
 }
 
 function classifyCostError(status: number, error: AzureErrorPayload): string {

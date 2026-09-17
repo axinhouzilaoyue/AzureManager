@@ -105,6 +105,8 @@ export interface AzureCostResult {
   currency: string;
   queriedAt: string;
   warning: string | null;
+  /** "ok" when freshly queried; "cached"/"unsupported"/"denied"/"unavailable" otherwise. */
+  status?: "ok" | "cached" | "unsupported" | "denied" | "unavailable";
 }
 
 export interface GlobalSshSettings {

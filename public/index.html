@@ -356,8 +356,11 @@
       padding: 0 6px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2);
       font-size: 11px; font-weight: 700;
     }
-    .acc-pane-actions { display: flex; gap: 4px; }
+    .acc-pane-actions { display: flex; gap: 4px; align-items: center; }
     .acc-pane-actions .btn { padding: 3px 7px; font-size: 11px; }
+    .acc-pane-actions .btn .ib-icon { width: 14px; height: 14px; display: block; }
+    .acc-pane-actions .btn.spinning svg { animation: vmSpin 0.7s linear infinite; }
+    .acc-pane-actions .btn:disabled { cursor: default; opacity: .7; }
     .account-list { overflow: auto; padding-right: 2px; flex: 1; min-height: 0; }
     .account-pane-foot {
       display: flex; gap: 6px; padding-top: 8px;
@@ -854,7 +857,17 @@
           <aside class="account-pane" id="view-acc-list">
             <div class="account-pane-head">
               <span>账户 <span class="acc-count" id="account-list-count">0</span></span>
-              <button class="btn btn-p btn-sm" type="button" id="btn-open-add" onclick="openAddAccount()">+ 添加</button>
+              <div class="acc-pane-actions">
+                <button class="btn btn-g btn-sm" type="button" id="btn-refresh-all-accounts"
+                        title="刷新全部账户的订阅信息、AI 配额、消费与虚拟机"
+                        aria-label="刷新全部账户的全部信息">
+                  <svg class="ib-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                    <path d="M21 3v6h-6" />
+                  </svg>
+                </button>
+                <button class="btn btn-p btn-sm" type="button" id="btn-open-add" onclick="openAddAccount()">+ 添加</button>
+              </div>
             </div>
             <input class="fi fi-sm" id="account-search" placeholder="搜索账户" />
             <div id="acc-grid" class="acc-grid account-list"></div>

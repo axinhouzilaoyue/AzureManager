@@ -163,7 +163,9 @@ async function main(): Promise<void> {
     });
     const page = await browser.newPage();
     const consoleErrors: string[] = [];
+    const seenUrls: string[] = [];
     page.on("pageerror", (err: Error) => consoleErrors.push(String(err)));
+    page.on("request", (req: any) => seenUrls.push(String(req.url())));
     page.on("console", (msg: any) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
@@ -351,12 +353,12 @@ async function main(): Promise<void> {
     );
     check("the notice auto-dismisses", noticeGone === "", `notice=${JSON.stringify(noticeGone)}`);
 
-    section("6. Quota refresh control and full account editing");
+    section("6. Insight-bar refresh and full account editing");
 
     const quotaBtn = await page.evaluate(() => {
       const bar = document.querySelector("#account-insights .insight-bar");
       if (!bar) return null;
-      const button = bar.querySelector("#btn-refresh-quota");
+      const button = bar.querySelector("#btn-refresh-summary");
       if (!button) return null;
       const children = [...bar.children];
       return {
@@ -367,28 +369,42 @@ async function main(): Promise<void> {
         ariaLabel: button.getAttribute("aria-label") ?? "",
       };
     });
-    check("quota refresh button exists in the insight bar", quotaBtn !== null);
+    check("insight refresh button exists in the bar", quotaBtn !== null);
     check("it is the last element of the bar", quotaBtn?.isLast === true, JSON.stringify(quotaBtn));
     check("it is icon-only (no text)", quotaBtn?.hasText === false, JSON.stringify(quotaBtn));
     check("it renders an icon", quotaBtn?.hasSvg === true, JSON.stringify(quotaBtn));
     check("it is labelled for accessibility", (quotaBtn?.title ?? "").length > 0 && (quotaBtn?.ariaLabel ?? "").length > 0,
       JSON.stringify(quotaBtn));
+    check(
+      "its label says it refreshes quota and cost",
+      /配额/.test(quotaBtn?.ariaLabel ?? "") && /消费/.test(quotaBtn?.ariaLabel ?? ""),
+      `aria-label=${quotaBtn?.ariaLabel}`,
+    );
 
-    // Clicking it must not disturb the cost timestamp.
-    const beforeRefresh = await page.evaluate(() => {
+    // The button must refresh BOTH the quota tier and the cost figures.
+    seenUrls.length = 0;
+    await page.click("#btn-refresh-summary");
+    await Bun.sleep(1500);
+    const hitCost = seenUrls.some((url) => /\/api\/accounts\/[^/]+\/cost/.test(url));
+    const hitQuota = seenUrls.some((url) => /\/api\/accounts\/[^/]+\/quota/.test(url));
+    check("clicking it requests the cost endpoint", hitCost, seenUrls.join("\n       "));
+    check("clicking it requests the quota endpoint", hitQuota, seenUrls.join("\n       "));
+
+    const costCell = await page.evaluate(() => {
       const cells = [...document.querySelectorAll("#account-insights .ib")];
-      const time = cells.find((c) => c.querySelector("i")?.textContent === "更新");
-      return time?.querySelector("b")?.textContent ?? "";
+      const pick = (label: string) =>
+        cells.find((c) => c.querySelector("i")?.textContent === label)?.querySelector("b")?.textContent ?? "";
+      return { mtd: pick("本月"), acc: pick("累计"), history: pick("历史"), updated: pick("消费更新") };
     });
-    await page.click("#btn-refresh-quota");
-    await Bun.sleep(1200);
-    const afterRefresh = await page.evaluate(() => {
-      const cells = [...document.querySelectorAll("#account-insights .ib")];
-      const time = cells.find((c) => c.querySelector("i")?.textContent === "更新");
-      return time?.querySelector("b")?.textContent ?? "";
-    });
-    check("quota refresh leaves the cost timestamp untouched", beforeRefresh === afterRefresh,
-      `before=${JSON.stringify(beforeRefresh)} after=${JSON.stringify(afterRefresh)}`);
+    console.log(`  cost cells after refresh: ${JSON.stringify(costCell)}`);
+    check("month-to-date has a value after refresh", costCell.mtd.length > 0 && costCell.mtd !== "查询中…",
+      JSON.stringify(costCell));
+    check("accumulated and history have values after refresh",
+      costCell.acc !== "查询中…" && costCell.acc !== "未获取" && costCell.history !== "查询中…",
+      JSON.stringify(costCell));
+    check("the cost timestamp is a real timestamp (not a loading placeholder)",
+      /\d/.test(costCell.updated) && costCell.updated !== "查询中…" && costCell.updated !== "尚未查询",
+      JSON.stringify(costCell));
 
     // The edit dialog must expose every field that creation collects.
     await page.evaluate((id: string | null) => (window as any).openEditAccount(id), selectedViaDom);
@@ -428,7 +444,49 @@ async function main(): Promise<void> {
       `subscriptionId=${savedSid}`,
     );
 
-    section("7. Layout screenshots for manual review");
+    section("7. Refresh-everything-for-all-accounts");
+
+    const allBtn = await page.evaluate(() => {
+      const button = document.getElementById("btn-refresh-all-accounts");
+      if (!button) return null;
+      return {
+        inPaneHead: Boolean(button.closest(".account-pane-head")),
+        hasSvg: Boolean(button.querySelector("svg")),
+        hasText: (button.textContent ?? "").trim().length > 0,
+        label: button.getAttribute("aria-label") ?? "",
+        title: button.getAttribute("title") ?? "",
+      };
+    });
+    check("a refresh-all-accounts button exists", allBtn !== null);
+    check("it sits in the account pane header", allBtn?.inPaneHead === true, JSON.stringify(allBtn));
+    check("it is icon-only and labelled", allBtn?.hasSvg === true && allBtn?.hasText === false
+      && (allBtn?.label ?? "").length > 0, JSON.stringify(allBtn));
+
+    seenUrls.length = 0;
+    await page.click("#btn-refresh-all-accounts");
+    // Two accounts, bounded concurrency, mocked upstream: a few seconds at most.
+    await page.waitForFunction(
+      () => !(document.getElementById("btn-refresh-all-accounts") as HTMLButtonElement | null)?.disabled,
+      { timeout: 60000 },
+    );
+    check(
+      "clicking it calls the bulk refresh endpoint",
+      seenUrls.some((url) => url.includes("/api/accounts/refresh-all")),
+      seenUrls.join("\n       "),
+    );
+    const bulkToast = await page.evaluate(() =>
+      [...document.querySelectorAll("#tc .toast")].map((el) => el.textContent ?? "").join(" | "),
+    );
+    console.log(`  bulk refresh toasts: ${bulkToast}`);
+    check(
+      "the result is reported back to the user",
+      /账户/.test(bulkToast) || /刷新/.test(bulkToast),
+      `toasts=${bulkToast}`,
+    );
+    const cardsAfterBulk = await page.$$eval(".acc-card", (els: any[]) => els.length);
+    check("the account list still renders after a bulk refresh", cardsAfterBulk === 2, `cards=${cardsAfterBulk}`);
+
+    section("8. Layout screenshots for manual review");
 
     await clickAccount(ACCOUNT_B_ID);
     await page.waitForFunction(

@@ -102,6 +102,11 @@ const ENV: AppEnv = {
 
 // ---- helpers ----
 const OVERVIEW_ACCOUNT_CONCURRENCY = parseInt(process.env.OVERVIEW_ACCOUNT_CONCURRENCY ?? "3");
+const BULK_REFRESH_CONCURRENCY = parseInt(process.env.BULK_REFRESH_CONCURRENCY ?? "3");
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T | Response> {
   const payload = await readJson<unknown>(req);
@@ -372,6 +377,100 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (body instanceof Response) return body;
     await reorderAccounts(ENV, body.accountIds);
     return jsonResponse({ success: true });
+  }
+
+  // Refresh every account's data in one action: VM list, subscription/quota
+  // insights and cost. Bounded concurrency keeps a large fleet from saturating
+  // the egress or tripping ARM throttling, and per-account failures are reported
+  // instead of aborting the whole batch.
+  if (req.method === "POST" && url.pathname === "/api/accounts/refresh-all") {
+    const accounts = await listAccounts(ENV);
+    const results = await mapWithConcurrency(accounts, BULK_REFRESH_CONCURRENCY, async (account) => {
+      const errors: string[] = [];
+      // Degraded-but-expected outcomes (e.g. a subscription that does not support
+      // Cost Management) are reported separately so they do not mark the account failed.
+      const warnings: string[] = [];
+      const summary = {
+        accountId: account.id,
+        name: account.name,
+        vmCount: null as number | null,
+        subscriptionDisplayName: account.subscriptionName,
+        state: account.subscriptionState,
+        quotaTier: account.quotaTier,
+        cost: null as { mtd: string; acc: string; history: string; currency: string } | null,
+      };
+      let decrypted;
+      try {
+        decrypted = await getDecryptedAccountOrThrow(ENV, account.id);
+      } catch (error) {
+        return { ...summary, ok: false, errors: [messageOf(error)], warnings };
+      }
+      const client = new AzureArmClient(ENV, decrypted);
+
+      try {
+        const snapshot = await getVmList(ENV, account.id, { force: true });
+        summary.vmCount = snapshot.vms.length;
+      } catch (error) {
+        errors.push(`虚拟机：${messageOf(error)}`);
+      }
+
+      try {
+        const [subResult, quotaResult] = await Promise.allSettled([
+          getSubscriptionDetails(client, decrypted.subscriptionId),
+          getQuotaTier(client, decrypted.subscriptionId),
+        ]);
+        if (subResult.status === "fulfilled") {
+          summary.subscriptionDisplayName = subResult.value.displayName;
+          summary.state = subResult.value.state;
+        } else {
+          errors.push(`订阅信息：${messageOf(subResult.reason)}`);
+        }
+        if (quotaResult.status === "fulfilled") {
+          summary.quotaTier = quotaResult.value;
+        } else {
+          errors.push(`AI 配额：${messageOf(quotaResult.reason)}`);
+        }
+        await updateAccountInsights(ENV, {
+          accountId: account.id,
+          subscriptionName: summary.subscriptionDisplayName,
+          subscriptionState: summary.state,
+          quotaTier: summary.quotaTier,
+        });
+      } catch (error) {
+        errors.push(`订阅信息：${messageOf(error)}`);
+      }
+
+      try {
+        const cost = await getAzureCosts(
+          client,
+          decrypted.subscriptionId,
+          decrypted.expirationDate,
+          {
+            mtd: account.costMtd,
+            acc: account.costAcc,
+            history: account.costHistory,
+            currency: account.costCurrency,
+            updatedAt: account.costUpdatedAt,
+          },
+          // Keep the batch moving: one retry instead of five.
+          { maxAttempts: 2, cooldownMs: 0 },
+        );
+        await updateAccountCost(ENV, account.id, cost);
+        summary.cost = { mtd: cost.mtd, acc: cost.acc, history: cost.history, currency: cost.currency };
+        if (cost.warning) warnings.push(`消费：${cost.warning}`);
+      } catch (error) {
+        errors.push(`消费：${messageOf(error)}`);
+      }
+
+      return { ...summary, ok: errors.length === 0, errors, warnings };
+    });
+
+    return jsonResponse({
+      total: accounts.length,
+      refreshed: results.filter((row) => row.ok).length,
+      failed: results.filter((row) => !row.ok),
+      results,
+    });
   }
 
   // cross-account VM fleet for overview page
@@ -705,14 +804,22 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         client,
         account.subscriptionId,
         account.expirationDate,
-        { acc: account.costAcc, history: account.costHistory },
+        {
+          mtd: account.costMtd,
+          acc: account.costAcc,
+          history: account.costHistory,
+          currency: account.costCurrency,
+          updatedAt: account.costUpdatedAt,
+        },
       );
       await updateAccountCost(ENV, accountId, cost);
-      return jsonResponse({ success: true, cached: false, ...cost });
+      return jsonResponse({ success: true, cached: cost.status !== "ok", ...cost });
     } catch (error) {
-      const cached = account.costMtd !== null;
+      // Query failures no longer throw (they degrade to cached/status values);
+      // this only catches unexpected errors such as a decryption failure.
       const detail = error instanceof Error ? error.message : String(error);
-      if (cached) {
+      const hasCache = account.costMtd !== null;
+      if (hasCache) {
         return jsonResponse({
           success: true,
           cached: true,
@@ -721,7 +828,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
           history: account.costHistory,
           currency: account.costCurrency ?? "",
           queriedAt: account.costUpdatedAt,
-          warning: account.costWarning || `实时查询失败，已显示缓存：${detail}`,
+          warning: `实时查询失败，已显示缓存：${detail}`,
+          status: "cached",
         });
       }
       return errorResponse(502, error instanceof CostQueryError ? error.message : "Azure 成本查询失败", { detail });

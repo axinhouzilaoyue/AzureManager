@@ -42,7 +42,8 @@ docker stop azure-manager && docker rm azure-manager
 - 「如何获取凭据」是添加账户弹窗的页签，不再单独占一个弹窗
 - VM 列表用颜色圆点表示状态，虚拟机操作收进单个「操作」浮窗菜单
 - 账户摘要为单行统计条，成本、累计、历史消费和 AI 配额一览
-- 账户摘要条末尾的纯图标按钮可**单独刷新 AI 配额**（不动虚拟机与消费）
+- 账户摘要条末尾的纯图标按钮一次刷新 **AI 配额 + 本月/累计/历史消费**（不动虚拟机）
+- 账户列表头部有「刷新全部账户」按钮：一次刷新所有账户的订阅信息、配额、消费与虚拟机
 - 账户头部把身份、指标与操作合并为一张卡片：「刷新全部」「创建虚拟机」「账户详情」
 - 消费类提示（如"已沿用上一次成功结果"）只在发生时短暂显示，不会常驻
 - 点击“账户详情”后弹窗查看 Client ID、Tenant ID、Subscription ID 和 Client Secret
@@ -80,8 +81,24 @@ docker stop azure-manager && docker rm azure-manager
 性能：进程级 AAD token 复用 + 按账户的 VM 列表 TTL 缓存（默认 30s，失败时最多回退 120s）+ 同账户请求合并（single-flight）。
 写操作（启动/停止/重启/删除/创建/换 IP）在**任务完成后**失效对应账户的缓存。
 
+消费查询：失败不再让整块信息报错。Cost Management 在很多订阅类型上会拒绝"自定义时间段"的累计查询
+（HTTP 400），所以：本月查询失败时回退到缓存值或以可读状态显示；若缓存结果来自**本月**则直接用
+`累计 = 本月 + 缓存历史` 推算，跳过那次容易失败的第二次查询；累计值单调不回退。
+未知的历史消费记为「未获取」而**不是** `0.00`，否则会被当成已知值而永久跳过累计查询。
+
 可调环境变量：`VM_CACHE_TTL_MS`、`VM_CACHE_STALE_MS`、`AZURE_REQUEST_TIMEOUT_MS`、
-`AZURE_TOKEN_TIMEOUT_MS`、`OVERVIEW_ACCOUNT_CONCURRENCY`。
+`AZURE_TOKEN_TIMEOUT_MS`、`OVERVIEW_ACCOUNT_CONCURRENCY`、`BULK_REFRESH_CONCURRENCY`。
+
+## 账户摘要条各字段含义
+
+| 字段 | 含义 |
+| --- | --- |
+| AI 配额 | 订阅的 Azure OpenAI / Cognitive Services 付费层级（Tier 0 / Tier 1 / 未分配 / 不支持），来自 `Microsoft.CognitiveServices/quotaTiers` |
+| 本月 | 当月至今的税前消费（`PreTaxCost` 求和，`timeframe: MonthToDate`） |
+| 累计 | 从「订阅到期日往前一年」到今天这段时间的总消费 |
+| 历史 | 累计 − 本月，即订阅周期内、本月之前已经花掉的部分（用完了多少额度看这个） |
+| 消费更新 | **只**表示上面三个金额最后一次成功实时查询的时间（不含配额） |
+| 末尾 ⟳ | 一次刷新 AI 配额 + 本月/累计/历史 |
 
 ## 测试
 

@@ -27,7 +27,8 @@ const S = {
   renderedVms: [],
   vmsLoading: false,
   createVmAccountId: null, // account the create-VM dialog was opened for
-  quotaRefreshing: false,
+  summaryRefreshing: false,
+  refreshAllRunning: false,
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -334,6 +335,13 @@ function visibleAccounts() {
   return rows;
 }
 
+function paintAccountPaneHead() {
+  const btn = $('btn-refresh-all-accounts');
+  if (!btn) return;
+  btn.disabled = S.refreshAllRunning;
+  btn.classList.toggle('spinning', S.refreshAllRunning);
+}
+
 function accountCardHtml(a) {
   const st = S.accountStats[a.id] || {};
   const title = accountDisplayName(a);
@@ -573,6 +581,7 @@ function paintAccGrid() {
   if (!g) return;
   // Repainting mid-drag destroys the drag source node and strands the dragend handler.
   if (S.dragAccountId) return;
+  paintAccountPaneHead();
   const count = $('account-list-count');
   if (count) count.textContent = String(visibleAccounts().length);
   if (!S.accounts.length) {
@@ -809,9 +818,9 @@ function renderAccountInsights(accountId) {
       <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
       <span class="ib"><i>历史</i><b>${esc(historyText)}</b></span>
       <span class="ib ib-time"><i>消费更新</i><b>${esc(updateText)}</b></span>
-      <button class="ib-refresh${S.quotaRefreshing ? ' spinning' : ''}" type="button" id="btn-refresh-quota"
-              title="只刷新 AI 配额层级" aria-label="只刷新 AI 配额层级"
-              ${S.quotaRefreshing ? 'disabled' : ''}>
+      <button class="ib-refresh${S.summaryRefreshing ? ' spinning' : ''}" type="button" id="btn-refresh-summary"
+              title="刷新 AI 配额、本月/累计/历史消费" aria-label="刷新 AI 配额与消费"
+              ${S.summaryRefreshing ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           <path d="M21 3v6h-6" />
@@ -822,10 +831,15 @@ function renderAccountInsights(accountId) {
 }
 window.openAccountDetails = openAccountDetails;
 
+// Account ids with an insight request genuinely in flight. The display flag
+// (`loading`) is not usable as a lock: the account switch sets it optimistically
+// before calling in, so guarding on it made every load bail out silently.
+const insightLoads = new Set();
+
 async function loadAccountInsights(accountId, force = false) {
   if (!accountId) return;
+  if (insightLoads.has(accountId)) return;
   const previous = S.accountInsights[accountId] || {};
-  if (previous.loading) return;
   if (!force && previous.loaded) return;
   const account = S.accounts.find((item) => item.id === accountId);
   const updatedAt = account?.costUpdatedAt ? new Date(account.costUpdatedAt).getTime() : 0;
@@ -844,6 +858,7 @@ async function loadAccountInsights(accountId, force = false) {
     return;
   }
   S.accountInsights[accountId] = { ...previous, loading: true, warning: '' };
+  insightLoads.add(accountId);
   renderAccountInsights(accountId);
   try {
     const data = await api('GET', `/api/accounts/${accountId}/cost`);
@@ -861,6 +876,8 @@ async function loadAccountInsights(accountId, force = false) {
   } catch (e) {
     S.accountInsights[accountId] = { ...previous, loading: false, warning: e.message };
     toast(`消费查询失败: ${e.message}`, 'error');
+  } finally {
+    insightLoads.delete(accountId);
   }
   renderAccountInsights(accountId);
   updateAccountHeader(account);
@@ -868,46 +885,105 @@ async function loadAccountInsights(accountId, force = false) {
   paintAccGrid();
 }
 
-async function refreshAccountCost(accountId) {
-  if (!accountId) return;
-  await loadAccountInsights(accountId, true);
+/** Quota tier only: one lightweight ARM call. Caller decides how to render. */
+async function refreshQuotaTier(accountId) {
+  const id = accountId || S.selectedAccId;
+  if (!id) return null;
+  const payload = await api('GET', `/api/accounts/${id}/quota`);
+  const quotaTier = payload?.items?.quotaTier || '未获取';
+  // Both sources feed the label, so update them together to avoid one winning.
+  S.accountInsights[id] = { ...(S.accountInsights[id] || {}), quotaTier };
+  const account = S.accounts.find((a) => a.id === id);
+  if (account) account.quotaTier = quotaTier;
+  // An open details modal reads quotaTier from S.accountDetails first, so it
+  // would otherwise keep showing the pre-refresh value.
+  if (S.accountDetails[id]) S.accountDetails[id] = { ...S.accountDetails[id], quotaTier };
+  if (S.detailsAccountId === id && !$('mo-account-details')?.classList.contains('hidden')) {
+    renderAccountDetailsModal(account || S.accountDetails[id]);
+  }
+  return quotaTier;
 }
 
 /**
- * Refresh only the quota tier (one lightweight ARM call). Deliberately does not
- * touch the VM list or the cost figures.
+ * Refresh everything the insight bar shows: AI quota plus month-to-date,
+ * accumulated and historical spend. Deliberately does not touch the VM list.
  */
-async function refreshAccountQuota(accountId) {
+async function refreshAccountSummary(accountId) {
   const id = accountId || S.selectedAccId;
-  if (!id || S.quotaRefreshing) return;
-  S.quotaRefreshing = true;
+  if (!id || S.summaryRefreshing) return;
+  S.summaryRefreshing = true;
   renderAccountInsights(id);
   try {
-    const payload = await api('GET', `/api/accounts/${id}/quota`);
+    const [costResult, quotaResult] = await Promise.allSettled([
+      loadAccountInsights(id, true),
+      refreshQuotaTier(id),
+    ]);
     if (id !== S.selectedAccId) return;
-    const quotaTier = payload?.items?.quotaTier || '未获取';
-    // Both sources feed the label, so update them together to avoid one winning.
-    S.accountInsights[id] = { ...(S.accountInsights[id] || {}), quotaTier };
-    const account = S.accounts.find((a) => a.id === id);
-    if (account) account.quotaTier = quotaTier;
-    // An open details modal reads quotaTier from S.accountDetails first, so it
-    // would otherwise keep showing the pre-refresh value.
-    if (S.accountDetails[id]) S.accountDetails[id] = { ...S.accountDetails[id], quotaTier };
-    if (S.detailsAccountId === id && !$('mo-account-details')?.classList.contains('hidden')) {
-      renderAccountDetailsModal(account || S.accountDetails[id]);
-    }
-    toast(`AI 配额已更新：${quotaTier}`, 'success');
-  } catch (e) {
-    if (id === S.selectedAccId) showInsightNotice(id, `配额刷新失败：${e.message}`);
+    const failures = [];
+    if (costResult.status === 'rejected') failures.push(`消费：${costResult.reason?.message || costResult.reason}`);
+    if (quotaResult.status === 'rejected') failures.push(`配额：${quotaResult.reason?.message || quotaResult.reason}`);
+    // A degraded (cached/unsupported) cost result already raises its own notice
+    // inside loadAccountInsights; only request-level failures are reported here.
+    if (failures.length) showInsightNotice(id, `刷新失败 — ${failures.join('；')}`);
+    else toast('AI 配额与消费已更新', 'success');
   } finally {
-    S.quotaRefreshing = false;
+    S.summaryRefreshing = false;
     if (id === S.selectedAccId) {
       renderAccountInsights(id);
       paintAccGrid();
     }
   }
 }
-window.refreshAccountQuota = refreshAccountQuota;
+window.refreshAccountSummary = refreshAccountSummary;
+
+/** Refresh every account's VMs, subscription/quota and cost in one action. */
+async function refreshAllAccounts() {
+  if (S.refreshAllRunning) return;
+  S.refreshAllRunning = true;
+  paintAccGrid();
+  paintAccountPaneHead();
+  toast('正在刷新全部账户的订阅、配额、消费与虚拟机…', 'info');
+  try {
+    const result = await api('POST', '/api/accounts/refresh-all');
+    // Re-read the list so every card shows the values the server just stored.
+    S.accounts = await api('GET', '/api/accounts');
+    for (const row of result?.results || []) {
+      S.accountStats[row.accountId] = {
+        loading: false,
+        error: row.errors?.[0] || null,
+        vmCount: typeof row.vmCount === 'number' ? row.vmCount : undefined,
+        subscriptionDisplayName: row.subscriptionDisplayName || '',
+        state: row.state || '',
+        quotaTier: row.quotaTier || '',
+        warning: '',
+      };
+      S.vmsCache.delete(row.accountId); // the server list changed; re-read it lazily
+    }
+    if (S.selectedAccId) {
+      const acc = S.accounts.find((a) => a.id === S.selectedAccId);
+      if (acc) {
+        updateAccountHeader(acc);
+        renderAccountInsights(acc.id);
+        loadVmsFor(acc.id, { force: true });
+      }
+    }
+    refreshOverview();
+    const failedCount = result?.failed?.length || 0;
+    if (failedCount) {
+      const names = (result.failed || []).map((row) => row.name).filter(Boolean).slice(0, 3).join('、');
+      toast(`已刷新 ${result?.refreshed ?? 0}/${result?.total ?? 0} 个账户；${failedCount} 个部分失败：${names}`, 'info');
+    } else {
+      toast(`已刷新全部 ${result?.total ?? 0} 个账户`, 'success');
+    }
+  } catch (e) {
+    toast(`刷新全部账户失败：${e.message}`, 'error');
+  } finally {
+    S.refreshAllRunning = false;
+    paintAccGrid();
+    paintAccountPaneHead();
+  }
+}
+window.refreshAllAccounts = refreshAllAccounts;
 
 async function openVmView(accId, e) {
   if (e) e.stopPropagation();
@@ -931,7 +1007,7 @@ async function openVmView(accId, e) {
   // Anything scoped to the previous account must not survive the switch.
   abortVmsReads();
   clearInsightNotice();
-  S.quotaRefreshing = false;
+  S.summaryRefreshing = false;
   S.vmsLoading = !S.vmsCache.has(accId);
   S.regions = [];
   S.pendingAction = null;
@@ -2249,7 +2325,8 @@ function bindUI() {
     }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
-    if (t.closest('#btn-refresh-quota')) return void refreshAccountQuota(S.selectedAccId);
+    if (t.closest('#btn-refresh-summary')) return void refreshAccountSummary(S.selectedAccId);
+    if (t.closest('#btn-refresh-all-accounts')) return void refreshAllAccounts();
     if (t.closest('#btn-account-details')) return void openAccountDetails(S.selectedAccId);
     if (t.closest('#btn-toggle-account-secret')) return void toggleAccountSecret();
     if (t.closest('#btn-copy-account-secret')) return void copyAccountSecret();
