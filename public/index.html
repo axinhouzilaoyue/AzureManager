@@ -376,18 +376,25 @@
     .detail-head {
       display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
     }
-    .insight-strip {
-      display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    /* 账户摘要：单行紧凑统计条，替代 5 个独立卡片 */
+    .insight-bar {
+      width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 0;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card);
+      padding: 9px 12px; margin-bottom: 10px; cursor: pointer; text-align: left;
+      transition: border-color var(--t), background var(--t);
     }
-    .insight-item {
-      flex: 1 1 150px; min-width: 140px; text-align: left; border: 1px solid var(--line);
-      border-radius: 10px; background: var(--bg-card); padding: 10px 12px; cursor: pointer;
+    .insight-bar:hover { border-color: var(--line-3); background: #fafafa; }
+    .insight-bar .ib {
+      display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 12px;
+      border-left: 1px solid var(--line); white-space: nowrap;
     }
-    .insight-item:hover { border-color: var(--line-3); background: #fafafa; }
-    .insight-item-k { color: var(--text-3); font-size: 11px; font-weight: 700; }
-    .insight-item-v { margin-top: 4px; font-size: 14px; font-weight: 760; color: var(--text); }
+    .insight-bar .ib:first-child { border-left: 0; padding-left: 0; }
+    .insight-bar .ib i { font-style: normal; color: var(--text-3); font-size: 11.5px; font-weight: 650; }
+    .insight-bar .ib b { color: var(--text); font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .insight-bar .ib-time { margin-left: auto; border-left: 0; padding-right: 0; }
+    .insight-bar .ib-time b { font-weight: 650; color: var(--text-2); font-size: 12px; }
     .insight-warning {
-      flex-basis: 100%; padding: 8px 10px; border-radius: 8px; background: #fff7ed;
+      padding: 8px 10px; margin-bottom: 10px; border-radius: 8px; background: #fff7ed;
       border: 1px solid #fed7aa; color: #9a3412; font-size: 12px;
     }
     .vm-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -470,8 +477,6 @@
       table.vm-table { min-width: 640px; }
       th { padding: 10px 10px; }
       td { padding: 11px 10px; }
-      #view-vms .ops { gap: 4px; }
-      #view-vms .ops .btn-sm { padding: 5px 8px; font-size: 11.5px; }
     }
     th {
       text-align: left; padding: 11px 14px; background: var(--bg-soft);
@@ -487,6 +492,42 @@
     .vm-name { font-weight: 700; }
     .vm-sub { margin-top: 3px; color: var(--text-3); font-size: 12px; }
     .ops { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* 状态：用颜色圆点替代文字徽标 */
+    .vm-status-cell { width: 56px; text-align: center; }
+    .dot {
+      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      background: #9ca3af; vertical-align: middle;
+    }
+    .dot.ok   { background: #10b981; box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 18%, transparent); }
+    .dot.err  { background: #ef4444; box-shadow: 0 0 0 3px color-mix(in srgb, #ef4444 16%, transparent); }
+    .dot.warn { background: #f59e0b; box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 18%, transparent); }
+    .dot.inf  { background: #9ca3af; box-shadow: 0 0 0 3px color-mix(in srgb, #9ca3af 16%, transparent); }
+
+    /* 操作：单个按钮 + 浮窗菜单 */
+    .ops-trigger {
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--bg-card); color: var(--text);
+      border-radius: var(--r); padding: 5px 9px; font-size: 12px; font-weight: 650; white-space: nowrap;
+      transition: border-color var(--t), background var(--t);
+    }
+    .ops-trigger:hover, .ops-trigger.active { border-color: var(--line-3); background: var(--bg-soft); }
+    .ops-trigger svg { width: 11px; height: 11px; color: var(--text-3); }
+    .ops-menu {
+      position: fixed; z-index: 200; min-width: 148px; padding: 5px;
+      background: var(--bg-card); border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: var(--float-shadow); display: flex; flex-direction: column; gap: 1px;
+    }
+    .ops-menu.hidden { display: none !important; }
+    .ops-item {
+      display: block; width: 100%; text-align: left; cursor: pointer; border: 0; background: transparent;
+      color: var(--text); font-size: 12.5px; font-weight: 600; padding: 8px 10px; border-radius: 7px;
+      transition: background var(--t);
+    }
+    .ops-item:hover { background: var(--bg-soft); }
+    .ops-item.danger { color: var(--err-text); }
+    .ops-item.danger:hover { background: var(--err-bg); }
+    .ops-sep { height: 1px; margin: 4px 6px; background: var(--line); }
 
     .badge {
       display: inline-flex; align-items: center; height: 24px; padding: 0 9px;
@@ -809,17 +850,13 @@
                   <div class="page-sub mono" id="vm-acc-sub">-</div>
                 </div>
                 <div class="bgrp">
-                  <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms">刷新</button>
+                  <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms" title="刷新订阅信息、消费与虚拟机">刷新</button>
                   <button class="btn btn-p btn-sm" type="button" id="btn-create-vm">创建虚拟机</button>
                   <button class="btn btn-s btn-sm" type="button" id="btn-account-details">账户详情</button>
                 </div>
               </div>
 
-              <div class="section-title-row">
-                <span>账户摘要</span>
-                <button class="btn btn-s btn-sm" type="button" id="btn-refresh-account-info">刷新</button>
-              </div>
-              <div id="account-insights" class="insight-strip"></div>
+              <div id="account-insights"></div>
 
               <div class="tabs">
                 <div class="tab active" data-vtab="vms">虚拟机</div>
@@ -840,10 +877,9 @@
                     <thead>
                       <tr>
                         <th>虚拟机</th>
-                        <th>区域 / 规格</th>
+                        <th>规格</th>
                         <th>状态</th>
                         <th>开机</th>
-                        <th>系统盘</th>
                         <th>公网 IP</th>
                         <th>操作</th>
                       </tr>
@@ -1356,6 +1392,8 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<script src="/app.js?v=20260917a"></script>
+<div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
+
+<script src="/app.js?v=20260917b"></script>
 </body>
 </html>

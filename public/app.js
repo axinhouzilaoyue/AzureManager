@@ -19,6 +19,7 @@ const S = {
   revealedAccountSecret: false,
   vmSearch: '',
   vmStatusFilter: 'all',
+  renderedVms: [],
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -688,9 +689,8 @@ function renderAccountInsights(accountId) {
   const quota = data.quotaTier || account?.quotaTier || '未获取';
   const warningText = data.warning || account?.costWarning || '';
   const shortWarning = warningText.length > 180 ? `${warningText.slice(0, 180)}…` : warningText;
-  const warning = shortWarning ? `<div class="small muted" style="margin-top:4px">${esc(shortWarning)}</div>` : '';
-  const costText = mtd !== null && mtd !== undefined && mtd !== ''
-    ? `本月 ${mtd}${unit}`
+  const mtdText = mtd !== null && mtd !== undefined && mtd !== ''
+    ? `${mtd}${unit}`
     : (loading || '未获取');
   const accText = acc !== null && acc !== undefined && acc !== ''
     ? `${acc}${unit}`
@@ -702,22 +702,14 @@ function renderAccountInsights(accountId) {
     ? new Date(account.costUpdatedAt).toLocaleString()
     : (loading ? '查询中…' : '尚未查询');
   host.innerHTML = `
-    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
-      <div class="insight-item-k">AI 配额</div><div class="insight-item-v">${esc(quota)}</div>
+    <button class="insight-bar" type="button" title="查看账户详情" onclick='openAccountDetails(${jsq(accountId)})'>
+      <span class="ib"><i>AI 配额</i><b>${esc(quota)}</b></span>
+      <span class="ib"><i>本月</i><b>${esc(mtdText)}</b></span>
+      <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
+      <span class="ib"><i>历史</i><b>${esc(historyText)}</b></span>
+      <span class="ib ib-time"><i>更新</i><b>${esc(updateText)}</b></span>
     </button>
-    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
-      <div class="insight-item-k">本月消费</div><div class="insight-item-v">${esc(mtd !== null && mtd !== undefined && mtd !== '' ? `${mtd}${unit}` : (loading || '未获取'))}</div>
-    </button>
-    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
-      <div class="insight-item-k">累计消费</div><div class="insight-item-v">${esc(accText)}</div>
-    </button>
-    <button class="insight-item" type="button" onclick='openAccountDetails(${jsq(accountId)})'>
-      <div class="insight-item-k">历史消费</div><div class="insight-item-v">${esc(historyText)}</div>
-    </button>
-    <div class="insight-item" style="cursor:default">
-      <div class="insight-item-k">数据更新时间</div><div class="insight-item-v">${esc(updateText)}</div>
-    </div>
-    ${warning ? `<div class="insight-warning">${esc(shortWarning)}</div>` : ''}`;
+    ${shortWarning ? `<div class="insight-warning">${esc(shortWarning)}</div>` : ''}`;
 }
 window.openAccountDetails = openAccountDetails;
 
@@ -819,6 +811,12 @@ function backToAccountList() {
 }
 
 // ── VMs ───────────────────────────────────────────────────────
+async function refreshWorkspace() {
+  if (!S.selectedAccId) return;
+  await Promise.allSettled([loadVms(), refreshAccountInfo(S.selectedAccId)]);
+  toast('已刷新');
+}
+
 async function loadVms() {
   try {
     S.vms = await api('GET', '/api/vms');
@@ -831,7 +829,7 @@ async function loadVms() {
 function formatUptime(vm) {
   const ps = String(vm.status || '').toLowerCase();
   const running = ps.includes('running');
-  if (!running) return { text: '未运行', sub: '' };
+  if (!running) return { text: '-', sub: '' };
 
   let days = typeof vm.uptimeDays === 'number' ? vm.uptimeDays : null;
   if (days === null && vm.timeCreated) {
@@ -863,11 +861,23 @@ function filteredVms() {
   });
 }
 
+function vmDotClass(status) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('running')) return 'ok';
+  if (s.includes('deallocat') || s.includes('stopped')) return 'err';
+  if (!s) return 'inf';
+  if (s.includes('starting') || s.includes('stopping') || s.includes('creating') || s.includes('updating')) return 'warn';
+  return 'inf';
+}
+
 function renderVms() {
   const tb = $('vm-tbody');
   const rows = filteredVms();
+  S.renderedVms = rows;
+  closeVmOpsMenu(true);
+
   if (!S.vms.length) {
-    tb.innerHTML = `<tr><td colspan="7" style="padding:36px">
+    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
         <h3>此订阅下暂无虚拟机</h3>
         <p>点击右上角「创建虚拟机」开始。</p>
@@ -877,49 +887,104 @@ function renderVms() {
   }
 
   if (!rows.length) {
-    tb.innerHTML = `<tr><td colspan="7" style="padding:36px"><div class="empty" style="border:none;background:transparent;padding:12px"><h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p></div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="6" style="padding:36px"><div class="empty" style="border:none;background:transparent;padding:12px"><h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p></div></td></tr>`;
     return;
   }
 
-  tb.innerHTML = rows.map(vm => {
+  tb.innerHTML = rows.map((vm, index) => {
     const ps = vmStatusLabel(vm.status);
-    const psLower = String(vm.status || '').toLowerCase();
-    const bc = psLower.includes('running')
-      ? 'bg-ok'
-      : (psLower.includes('deallocat') || psLower.includes('stopped'))
-        ? 'bg-err'
-        : 'bg-inf';
-    const rgArg = jsq(vm.resourceGroup);
-    const vmArg = jsq(vm.name);
+    const dot = vmDotClass(vm.status);
     const uptime = formatUptime(vm);
+    const specs = [vm.vmSize, vm.diskSizeGb ? `系统盘 ${vm.diskSizeGb} GB` : null]
+      .filter(Boolean).map(esc).join('</div><div class="vm-sub">');
+    const ipSub = vm.ipAllocationMethod === 'Dynamic' ? '<div class="vm-sub">动态</div>' : '';
     return `<tr>
       <td>
         <div class="vm-name">${esc(vm.name)}</div>
-        <div class="vm-sub">${esc(vm.resourceGroup)}</div>
+        <div class="vm-sub">${esc([vm.resourceGroup, vm.location].filter(Boolean).join(' · ') || '-')}</div>
       </td>
-      <td>
-        <div>${esc(vm.location || '-')}</div>
-        <div class="vm-sub">${esc(vm.vmSize || '-')}</div>
+      <td>${specs ? `<div>${specs}</div>` : '-'}</td>
+      <td class="vm-status-cell">
+        <span class="dot ${dot}" role="img" aria-label="${esc(ps)}" title="${esc(ps)}"></span>
       </td>
-      <td><span class="badge ${bc}">${esc(ps)}</span></td>
       <td>
         <div>${esc(uptime.text)}</div>
         ${uptime.sub ? `<div class="vm-sub">${esc(uptime.sub)}</div>` : ''}
       </td>
-      <td>${vm.diskSizeGb ? esc(`${vm.diskSizeGb} GB`) : '-'}</td>
-      <td class="mono">${esc(vm.publicIp || '-')}${vm.ipAllocationMethod === 'Dynamic' ? '<div class="vm-sub">动态</div>' : ''}</td>
+      <td class="mono">${esc(vm.publicIp || '-')}${ipSub}</td>
       <td>
-        <div class="ops">
-          <button class="btn btn-s btn-sm" onclick='vmAction("start", ${rgArg}, ${vmArg})'>启动</button>
-          <button class="btn btn-s btn-sm" onclick='vmAction("stop", ${rgArg}, ${vmArg})'>停止</button>
-          <button class="btn btn-s btn-sm" onclick='vmAction("restart", ${rgArg}, ${vmArg})'>重启</button>
-          <button class="btn btn-s btn-sm" onclick='changeIp(${rgArg}, ${vmArg})'>换 IP</button>
-          <button class="btn btn-dg btn-sm" onclick='vmAction("delete", ${rgArg}, ${vmArg})'>删除</button>
-        </div>
+        <button class="ops-trigger" type="button" data-vm-ops="${index}" aria-haspopup="menu">操作
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
       </td>
     </tr>`;
   }).join('');
 }
+
+let vmOpsAnchor = null;
+let vmOpsOpenedAt = 0;
+
+// 刚刚打开时忽略滚动/点击关闭，避免 macOS 触控板惯性滚动把菜单立刻关掉。
+function closeVmOpsMenu(force = false) {
+  if (!force && vmOpsAnchor && Date.now() - vmOpsOpenedAt < 160) return;
+  const menu = $('vm-ops-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+    menu.innerHTML = '';
+  }
+  vmOpsAnchor?.classList.remove('active');
+  vmOpsAnchor = null;
+}
+
+function openVmOpsMenu(btn) {
+  const menu = $('vm-ops-menu');
+  if (!menu) return;
+  const vm = S.renderedVms[Number(btn.getAttribute('data-vm-ops'))];
+  if (!vm) return;
+
+  const wasOpen = vmOpsAnchor === btn && !menu.classList.contains('hidden');
+  closeVmOpsMenu(true);
+  if (wasOpen) return;
+
+  const items = [
+    { key: 'start', label: '启动' },
+    { key: 'stop', label: '停止' },
+    { key: 'restart', label: '重启' },
+    { key: 'ip', label: '更换公网 IP' },
+    { key: 'delete', label: '删除资源组', danger: true, separator: true },
+  ];
+  for (const item of items) {
+    if (item.separator) menu.appendChild(document.createElement('div')).className = 'ops-sep';
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = `ops-item${item.danger ? ' danger' : ''}`;
+    el.textContent = item.label;
+    el.setAttribute('role', 'menuitem');
+    el.addEventListener('click', () => {
+      closeVmOpsMenu(true);
+      if (item.key === 'ip') changeIp(vm.resourceGroup, vm.name);
+      else vmAction(item.key, vm.resourceGroup, vm.name);
+    });
+    menu.appendChild(el);
+  }
+
+  vmOpsAnchor = btn;
+  vmOpsOpenedAt = Date.now();
+  btn.classList.add('active');
+  menu.classList.remove('hidden');
+
+  const rect = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  let left = rect.right - mw;
+  let top = rect.bottom + 6;
+  if (top + mh > window.innerHeight - 8) top = rect.top - mh - 6;
+  left = Math.max(8, Math.min(left, window.innerWidth - mw - 8));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(Math.max(8, top))}px`;
+}
+window.openVmOpsMenu = openVmOpsMenu;
+window.closeVmOpsMenu = closeVmOpsMenu;
 
 function formatMemoryGb(mb) {
   if (!mb || mb <= 0) return '-';
@@ -1774,6 +1839,13 @@ function bindUI() {
     const t = e.target;
     if (!(t instanceof Element)) return;
 
+    const opsTrigger = t.closest('.ops-trigger');
+    if (!opsTrigger && !t.closest('#vm-ops-menu')) closeVmOpsMenu();
+    if (opsTrigger) {
+      e.preventDefault();
+      return void openVmOpsMenu(opsTrigger);
+    }
+
     const closer = t.closest('[data-close]');
     if (closer) {
       const modalId = closer.getAttribute('data-close');
@@ -1858,8 +1930,7 @@ function bindUI() {
       return;
     }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
-    if (t.closest('#btn-refresh-vms')) return void loadVms().then(() => toast('虚拟机已刷新'));
-    if (t.closest('#btn-refresh-account-info')) return void refreshAccountInfo(S.selectedAccId).then(() => toast('账户信息已刷新'));
+    if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
     if (t.closest('#btn-refresh-account-info-modal')) return void refreshAccountInfo(S.selectedAccId).then(() => toast('账户信息已刷新'));
     if (t.closest('#btn-account-details')) return void openAccountDetails(S.selectedAccId);
     if (t.closest('#btn-toggle-account-secret')) return void toggleAccountSecret();
@@ -1883,6 +1954,13 @@ function bindUI() {
     if (t.closest('#btn-cf')) return void confirmPendingAction();
     if (t.closest('#btn-save-expiry')) return void savePostAddExpiry();
   });
+
+  // Close the VM ops menu on escape, scroll or resize.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeVmOpsMenu();
+  });
+  window.addEventListener('scroll', () => closeVmOpsMenu(), true);
+  window.addEventListener('resize', () => closeVmOpsMenu());
 
   on('login-pw', 'keydown', (e) => {
     if (e.key === 'Enter') doLogin();

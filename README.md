@@ -39,6 +39,8 @@ docker stop azure-manager && docker rm azure-manager
 - 管理多个 Azure Service Principal 账户
 - 常驻账户列表（264px）与全宽 VM 工作台
 - 账户行只展示邮箱、VM 台数和剩余天数
+- VM 列表用颜色圆点表示状态，虚拟机操作收进单个「操作」浮窗菜单
+- 账户摘要为单行统计条，成本、累计、历史消费和 AI 配额一览
 - 点击“账户详情”后弹窗查看 Client ID、Tenant ID、Subscription ID 和 Client Secret
 - 账户 JSON 导入、导出、搜索、排序和拖动排序
 - 查看订阅成本、累计消费、历史消费和 AI 配额层级，并对无权限状态给出明确提示
