@@ -221,16 +221,6 @@ async function refreshOverview() {
 }
 
 // ── accounts ──────────────────────────────────────────────────
-function setAccountPaneOpen(open) {
-  const pane = $('view-acc-list');
-  if (!pane) return;
-  pane.classList.toggle('hidden', !open);
-  if (open) {
-    renderAccGrid();
-    setTimeout(() => $('account-search')?.focus(), 30);
-  }
-}
-
 function showAccountListView() {
   const acc = S.accounts.find((item) => item.id === S.selectedAccId);
   if (acc) {
@@ -249,6 +239,18 @@ function showAccList() {
   showAccountListView();
 }
 
+function vmStatusLabel(status) {
+  const s = String(status || '').toLowerCase();
+  if (!s) return '未知';
+  if (s.includes('running')) return '运行中';
+  if (s.includes('deallocat')) return s.includes('deallocating') ? '停止中' : '已停止';
+  if (s.includes('stopping')) return '停止中';
+  if (s.includes('stopped')) return '已停止';
+  if (s.includes('starting')) return '启动中';
+  if (s.includes('creating')) return '创建中';
+  return status;
+}
+
 function daysUntil(dateStr) {
   if (!dateStr) return null;
   const end = new Date(`${dateStr}T00:00:00`);
@@ -256,16 +258,6 @@ function daysUntil(dateStr) {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   return Math.round((end.getTime() - now.getTime()) / 86400000);
-}
-
-function expiryBadge(dateStr) {
-  const days = daysUntil(dateStr);
-  if (days === null) return `<span class="badge bg-inf">未设置到期</span>`;
-  if (days < 0) return `<span class="badge bg-err">已过期 ${Math.abs(days)} 天</span>`;
-  if (days === 0) return `<span class="badge bg-err">今天到期</span>`;
-  if (days <= 7) return `<span class="badge bg-err">剩余 ${days} 天</span>`;
-  if (days <= 30) return `<span class="badge bg-run">剩余 ${days} 天</span>`;
-  return `<span class="badge bg-ok">剩余 ${days} 天</span>`;
 }
 
 function expiryStatClass(dateStr) {
@@ -276,22 +268,8 @@ function expiryStatClass(dateStr) {
   return 'ok';
 }
 
-function expiryStatText(dateStr) {
-  const days = daysUntil(dateStr);
-  if (days === null) return '未设置';
-  if (days < 0) return `已过期 ${Math.abs(days)} 天 · ${dateStr}`;
-  if (days === 0) return `今天到期 · ${dateStr}`;
-  return `剩余 ${days} 天 · ${dateStr}`;
-}
-
 function accountDisplayName(a) {
   return (a?.email || a?.name || '未命名账户').trim();
-}
-
-function accountCostText(a) {
-  if (a?.costMtd === null || a?.costMtd === undefined || a?.costMtd === '') return '暂未查询';
-  const unit = a.costCurrency ? ` ${a.costCurrency}` : '';
-  return `本月 ${a.costMtd}${unit}`;
 }
 
 function visibleAccounts() {
@@ -319,33 +297,30 @@ function visibleAccounts() {
 
 function accountCardHtml(a) {
   const st = S.accountStats[a.id] || {};
-  const vmText = st.loading ? '加载中…'
-    : (typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.error ? '获取失败' : '-'));
-  const subName = st.subscriptionDisplayName || a.subscriptionName || 'Azure 订阅';
-  const state = st.state ? String(st.state) : (a.subscriptionState || '');
-  const quota = st.quotaTier || a.quotaTier || '未获取';
-  const expCls = expiryStatClass(a.expirationDate);
   const title = accountDisplayName(a);
+  const subName = st.subscriptionDisplayName || a.subscriptionName || '';
+  const state = st.loading ? '' : (st.state ? String(st.state) : (a.subscriptionState || ''));
+  const vmCount = typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.loading ? '… 台' : '— 台');
+  const days = daysUntil(a.expirationDate);
+  const dayCls = expiryStatClass(a.expirationDate);
+  const dayText = days === null ? '未设置到期'
+    : days < 0 ? `已过期 ${Math.abs(days)} 天`
+    : days === 0 ? '今天到期'
+    : `剩余 ${days} 天`;
+  const tip = [title, subName, state].filter(Boolean).join(' · ');
   return `
-    <div class="acc-card${S.selectedAccId === a.id ? ' selected' : ''}" data-account-id="${esc(a.id)}" onclick='openVmView(${jsq(a.id)})'>
-      <div class="acc-top">
-        <div style="min-width:0;display:flex;gap:9px;align-items:flex-start">
-          <span class="acc-drag" draggable="true" title="拖动调整顺序">⠿</span>
-          <div style="min-width:0">
-            <div class="acc-name" title="${esc(title)}">${esc(title)}</div>
-            <div class="acc-sub" title="${esc(subName)}">${esc(subName)}${state ? ` · ${esc(state)}` : ''}</div>
-          </div>
+    <div class="acc-card${S.selectedAccId === a.id ? ' selected' : ''}" data-account-id="${esc(a.id)}"
+         title="${esc(tip)}" onclick='openVmView(${jsq(a.id)})'>
+      <span class="acc-drag" draggable="true" title="拖动调整顺序">⠿</span>
+      <div style="min-width:0">
+        <div class="acc-name">${esc(title)}</div>
+        <div class="acc-meta">
+          <strong>${esc(vmCount)}</strong>
+          <span>·</span>
+          <span class="acc-days ${dayCls}">${esc(dayText)}</span>
         </div>
-        ${expiryBadge(a.expirationDate)}
       </div>
-      <div class="acc-compact">
-        <span>VM <strong>${esc(vmText)}</strong></span>
-        <span>消费 <strong>${esc(accountCostText(a).replace('本月 ', ''))}</strong></span>
-        <span>Tier <strong>${esc(quota)}</strong></span>
-      </div>
-      <div class="acc-compact">
-        <span>${esc(expiryStatText(a.expirationDate))}</span>
-      </div>
+      <button class="acc-info" type="button" data-account-detail="${esc(a.id)}" title="查看账户详情">详情</button>
     </div>`;
 }
 
@@ -361,7 +336,6 @@ function updateAccountHeader(account) {
   const subscriptionName = detail.subscriptionName || st.subscriptionDisplayName || '未获取';
   const subscriptionState = detail.subscriptionState || st.state || '未获取';
   $('vm-acc-title').textContent = title;
-  if ($('btn-account-switcher')) $('btn-account-switcher').textContent = `${title} ▾`;
   $('vm-acc-sub').textContent = [
     subscriptionName,
     subscriptionState,
@@ -552,7 +526,7 @@ function paintAccGrid() {
   const g = $('acc-grid');
   if (!g) return;
   const count = $('account-list-count');
-  if (count) count.textContent = `${visibleAccounts().length} 个`;
+  if (count) count.textContent = String(visibleAccounts().length);
   if (!S.accounts.length) {
     g.innerHTML = `
       <div class="empty" style="grid-column:1/-1">
@@ -812,7 +786,6 @@ async function openVmView(accId, e) {
 
   const acc = S.accounts.find(a => a.id === accId);
   if (!acc) return;
-  $('view-acc-list')?.classList.add('hidden');
   $('account-empty')?.classList.add('hidden');
   $('view-vms')?.classList.remove('hidden');
   showAccountDetailFromCache(acc);
@@ -909,8 +882,8 @@ function renderVms() {
   }
 
   tb.innerHTML = rows.map(vm => {
-    const ps = vm.status || '-';
-    const psLower = String(ps).toLowerCase();
+    const ps = vmStatusLabel(vm.status);
+    const psLower = String(vm.status || '').toLowerCase();
     const bc = psLower.includes('running')
       ? 'bg-ok'
       : (psLower.includes('deallocat') || psLower.includes('stopped'))
@@ -1829,13 +1802,6 @@ function bindUI() {
       return;
     }
 
-    const pane = $('view-acc-list');
-    if (pane && !pane.classList.contains('hidden')
-      && !t.closest('#view-acc-list')
-      && !t.closest('#btn-account-switcher')) {
-      pane.classList.add('hidden');
-    }
-
     const nav = t.closest('.ni[data-page]');
     if (nav) {
       e.preventDefault();
@@ -1863,11 +1829,6 @@ function bindUI() {
 
     if (t.closest('#btn-logout')) return void doLogout();
     if (t.closest('#login-btn')) return void doLogin();
-    if (t.closest('#btn-account-switcher')) {
-      const pane = $('view-acc-list');
-      return void setAccountPaneOpen(Boolean(pane?.classList.contains('hidden')));
-    }
-    if (t.closest('#btn-close-account-pane')) return void setAccountPaneOpen(false);
     if (t.closest('#btn-guide-to-add')) {
       closeModal('mo-azure-guide');
       openAddAccount();
@@ -1952,6 +1913,13 @@ function bindUI() {
 
   const accGrid = $('acc-grid');
   if (accGrid) {
+    accGrid.addEventListener('click', (e) => {
+      const btn = e.target instanceof Element ? e.target.closest('[data-account-detail]') : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openAccountDetails(btn.getAttribute('data-account-detail'));
+    }, true);
     accGrid.addEventListener('dragstart', (e) => {
       const handle = e.target instanceof Element ? e.target.closest('.acc-drag') : null;
       const card = handle?.closest('.acc-card');

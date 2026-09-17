@@ -104,6 +104,7 @@
       box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
     }
     .fi::placeholder { color: var(--text-3); }
+    .fi-sm { padding: 7px 10px; font-size: 12.5px; }
     .fhint { font-size: 12px; color: var(--text-2); line-height: 1.5; }
     .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media (max-width: 720px) { .frow { grid-template-columns: 1fr; } }
@@ -236,8 +237,7 @@
 
     .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; position: relative; z-index: 1; }
     .page { padding: 28px clamp(18px, 3vw, 40px) 40px; max-width: 1180px; }
-    #pg-accounts { max-width: none; }
-    #btn-account-switcher { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+    #pg-accounts { max-width: none; padding-left: clamp(14px, 1.6vw, 22px); padding-right: clamp(14px, 1.6vw, 22px); }
     .page.hidden { display: none !important; }
 
     .page-head {
@@ -309,64 +309,68 @@
       }
     }
 
-    .acc-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;
-    }
+    /* 账户列表：单行紧凑卡片，仅展示邮箱 / VM 台数 / 剩余天数 */
+    .acc-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
     .acc-card {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: 16px;
-      padding: 18px 18px 14px; box-shadow: var(--shadow); cursor: pointer;
-      transition: border-color var(--t), box-shadow var(--t), transform var(--t);
-      display: flex; flex-direction: column; gap: 14px;
+      display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+      gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+      border: 1px solid transparent; background: transparent;
+      transition: background var(--t), border-color var(--t);
     }
-    .acc-card:hover {
-      border-color: var(--line-3); box-shadow: var(--shadow-lg); transform: translateY(-1px);
+    .acc-card:hover { background: var(--bg-soft); }
+    .acc-card.selected {
+      background: color-mix(in srgb, var(--pr-active) 7%, transparent);
+      border-color: color-mix(in srgb, var(--pr-active) 22%, transparent);
     }
-    .acc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .acc-name { font-size: 16px; font-weight: 760; letter-spacing: -0.02em; line-height: 1.3; }
-    .acc-sub {
-      margin-top: 4px; font-size: 12px; color: var(--text-2);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px;
+    .acc-card.dragging { opacity: 0.45; }
+    .acc-drag {
+      width: 12px; opacity: 0; cursor: grab; color: var(--text-3); font-size: 12px; line-height: 1;
     }
-    .acc-stats {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    .acc-card:hover .acc-drag, .acc-card.selected .acc-drag { opacity: 1; }
+    .acc-name {
+      font-size: 13px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .acc-stat {
-      background: var(--bg); border: 1px solid var(--line);
-      border-radius: 12px; padding: 10px 12px;
+    .acc-meta {
+      margin-top: 3px; display: flex; align-items: center; gap: 5px;
+      font-size: 11.5px; color: var(--text-3); white-space: nowrap;
     }
-    .acc-stat-k {
-      font-size: 11px; font-weight: 650; color: var(--text-3);
-      letter-spacing: 0.02em;
+    .acc-meta strong { color: var(--text-2); font-weight: 700; }
+    .acc-days.ok { color: var(--ok-text); font-weight: 650; }
+    .acc-days.warn { color: #b45309; font-weight: 650; }
+    .acc-days.danger { color: var(--err-text); font-weight: 700; }
+    .acc-info {
+      opacity: 0.5; border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+      font-size: 11px; font-weight: 650; padding: 3px 5px; border-radius: 6px; transition: opacity var(--t);
     }
-    .acc-stat-v {
-      margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--text);
-      word-break: break-all; line-height: 1.35;
+    .acc-card:hover .acc-info, .acc-card.selected .acc-info { opacity: 1; }
+    .acc-info:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+    .accounts-layout {
+      display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 16px; align-items: start;
     }
-    .acc-stat-v.ok { color: #047857; }
-    .acc-stat-v.warn { color: #b45309; }
-    .acc-stat-v.danger { color: var(--err); }
-    .acc-foot {
-      padding-top: 2px;
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    }
-    .acc-foot-note { font-size: 12px; color: var(--text-3); }
-    .accounts-layout { position: relative; min-width: 0; }
     .account-pane {
       background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
       padding: 12px; display: flex; flex-direction: column; gap: 10px;
-    }
-    .account-popover {
-      position: absolute; left: 0; top: 0; z-index: 120; width: min(520px, calc(100vw - 48px));
-      max-height: min(72vh, 760px); overflow: hidden; box-shadow: var(--float-shadow);
+      position: sticky; top: 16px; max-height: calc(100vh - 60px); overflow: hidden;
     }
     .account-pane-head, .section-title-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       font-size: 13px; font-weight: 750;
     }
-    .account-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    .account-tools .btn { width: 100%; }
-    .account-list { overflow: auto; padding-right: 2px; }
-    .account-pane .acc-grid { grid-template-columns: 1fr; }
+    .acc-count {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px;
+      padding: 0 6px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2);
+      font-size: 11px; font-weight: 700;
+    }
+    .acc-pane-actions { display: flex; gap: 4px; }
+    .acc-pane-actions .btn { padding: 3px 7px; font-size: 11px; }
+    .account-list { overflow: auto; padding-right: 2px; flex: 1; min-height: 0; }
+    .account-pane-foot {
+      display: flex; gap: 6px; padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    }
+    .account-pane-foot .btn { flex: 1; }
+    .account-pane .acc-grid { grid-template-columns: 1fr; gap: 6px; }
     .account-main { min-width: 0; width: 100%; }
     .account-empty { min-height: 320px; }
     .detail-head {
@@ -402,19 +406,8 @@
     }
     .account-detail-value.secret { color: var(--err); }
     .account-detail-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-    .account-list .acc-card { padding: 11px 12px; border-radius: 12px; gap: 8px; }
-    .account-list .acc-card.selected { border-color: var(--pr-active); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pr-active) 12%, transparent); }
-    .account-list .acc-name {
-      font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .account-list .acc-sub { max-width: none; min-width: 0; }
-    .account-list .acc-stats { display: none; }
-    .account-list .acc-foot { display: none; }
-    .account-list .acc-compact {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); font-size: 12px;
-    }
-    .account-list .acc-compact strong { color: var(--text); font-weight: 700; }
-    @media (max-width: 1100px) {
+
+    @media (max-width: 1360px) {
       .sidebar { width: var(--scw); }
       .sidebar .sb-name,
       .sidebar .sb-lbl,
@@ -425,8 +418,13 @@
       .sidebar .ni-ico { width: 32px; height: 32px; }
       .sidebar .sbtoggle { display: none; }
     }
+    @media (max-width: 1180px) {
+      .accounts-layout { grid-template-columns: 228px minmax(0, 1fr); gap: 12px; }
+    }
     @media (max-width: 980px) {
-      .account-popover { position: fixed; inset: 72px 12px 12px; width: auto; max-height: none; }
+      .accounts-layout { grid-template-columns: minmax(0, 1fr); }
+      .account-pane { position: static; max-height: none; }
+      .account-list { max-height: 260px; }
       .account-detail-grid { grid-template-columns: 1fr; }
       .detail-head { flex-direction: column; }
       .vm-toolbar { flex-direction: column; }
@@ -467,7 +465,14 @@
       border-radius: var(--rl); box-shadow: var(--shadow);
     }
     table { width: 100%; border-collapse: collapse; }
-    table.vm-table { min-width: 800px; }
+    table.vm-table { min-width: 720px; }
+    @media (max-width: 1360px) {
+      table.vm-table { min-width: 640px; }
+      th { padding: 10px 10px; }
+      td { padding: 11px 10px; }
+      #view-vms .ops { gap: 4px; }
+      #view-vms .ops .btn-sm { padding: 5px 8px; font-size: 11.5px; }
+    }
     th {
       text-align: left; padding: 11px 14px; background: var(--bg-soft);
       font-size: 11px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase;
@@ -765,30 +770,30 @@
         <div class="page-head">
           <div>
             <div class="page-title">账户工作台</div>
-            <div class="page-sub">顶部切换账户，全宽工作台直接管理当前账户的虚拟机</div>
+            <div class="page-sub">左侧常驻账户列表，右侧管理当前账户的虚拟机</div>
           </div>
           <div class="bgrp">
-            <button class="btn btn-s" type="button" id="btn-account-switcher">账户列表</button>
             <button class="btn btn-s" type="button" id="btn-azure-guide" onclick="openAzureGuide()">如何获取凭据？</button>
             <button class="btn btn-p" type="button" id="btn-open-add" onclick="openAddAccount()">添加账户</button>
           </div>
         </div>
 
         <div class="accounts-layout">
-          <aside class="account-pane account-popover hidden" id="view-acc-list">
+          <aside class="account-pane" id="view-acc-list">
             <div class="account-pane-head">
-              <span>账户列表</span>
-              <span class="bgrp"><span class="muted small" id="account-list-count">0 个</span><button class="btn btn-g btn-sm" type="button" id="btn-close-account-pane">关闭</button></span>
+              <span>账户 <span class="acc-count" id="account-list-count">0</span></span>
+              <span class="acc-pane-actions">
+                <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-name" title="按名称/邮箱排序">名称 ⇅</button>
+                <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-expiry" title="按到期时间排序">到期 ⇅</button>
+              </span>
             </div>
-            <input class="fi" id="account-search" placeholder="搜索名称、邮箱或订阅 ID" />
-            <div class="account-tools">
-              <button class="btn btn-s btn-sm" type="button" id="btn-sort-account-name">名称排序</button>
-              <button class="btn btn-s btn-sm" type="button" id="btn-sort-account-expiry">到期排序</button>
-              <button class="btn btn-s btn-sm" type="button" id="btn-import-accounts">导入</button>
-              <button class="btn btn-s btn-sm" type="button" id="btn-export-accounts">导出</button>
+            <input class="fi fi-sm" id="account-search" placeholder="搜索账户" />
+            <div id="acc-grid" class="acc-grid account-list"></div>
+            <div class="account-pane-foot">
+              <button class="btn btn-g btn-sm" type="button" id="btn-import-accounts">导入</button>
+              <button class="btn btn-g btn-sm" type="button" id="btn-export-accounts">导出</button>
               <input class="hidden" type="file" id="account-import-file" accept="application/json,.json" />
             </div>
-            <div id="acc-grid" class="acc-grid account-list"></div>
           </aside>
 
           <main class="account-main">
