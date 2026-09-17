@@ -278,6 +278,59 @@ export async function updateAccountMetadata(env: AppEnv, input: {
     .run(input.newName, input.email, input.expirationDate, nowIso(), input.accountId);
 }
 
+/**
+ * Update every credential field of an account. `clientSecret` is optional: when it
+ * is omitted the stored ciphertext is left untouched (the UI never has to send the
+ * existing secret back).
+ *
+ * Credential changes reset the cached Azure-derived insights: a different
+ * subscription or service principal makes the previous subscription name, quota
+ * tier and cost numbers belong to something else.
+ */
+export async function updateAccountCredentials(env: AppEnv, input: {
+  accountId: string;
+  name: string;
+  clientId: string;
+  tenantId: string;
+  subscriptionId: string;
+  clientSecret?: string | null;
+  email?: string | null;
+  expirationDate: string | null;
+}): Promise<void> {
+  const timestamp = nowIso();
+  if (input.clientSecret) {
+    const ciphertext = await encryptString(env.ACCOUNT_ENCRYPTION_KEY, input.clientSecret);
+    env.DB.prepare(
+      `UPDATE accounts
+          SET name = ?, client_id = ?, tenant_id = ?, subscription_id = ?,
+              client_secret_ciphertext = ?, email = ?, expiration_date = ?,
+              subscription_name = NULL, subscription_state = NULL, quota_tier = NULL,
+              cost_mtd = NULL, cost_acc = NULL, cost_history = NULL, cost_currency = NULL,
+              cost_updated_at = NULL, cost_warning = NULL,
+              updated_at = ?
+        WHERE id = ?`
+    ).run(
+      input.name, input.clientId, input.tenantId, input.subscriptionId, ciphertext,
+      input.email ?? null, input.expirationDate, timestamp, input.accountId,
+    );
+    return;
+  }
+
+  env.DB.prepare(
+    `UPDATE accounts
+        SET name = ?, client_id = ?, tenant_id = ?, subscription_id = ?,
+            email = ?, expiration_date = ?,
+            subscription_name = NULL, subscription_state = NULL, quota_tier = NULL,
+            cost_mtd = NULL, cost_acc = NULL, cost_history = NULL, cost_currency = NULL,
+            cost_updated_at = NULL, cost_warning = NULL,
+            updated_at = ?
+      WHERE id = ?`
+  ).run(
+    input.name, input.clientId, input.tenantId, input.subscriptionId,
+    input.email ?? null, input.expirationDate, timestamp, input.accountId,
+  );
+}
+
 export async function deleteAccount(env: AppEnv, accountId: string): Promise<void> {
   env.DB.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
 }

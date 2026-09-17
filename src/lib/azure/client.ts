@@ -1,6 +1,6 @@
 import type { AppEnv, DecryptedAccountRecord } from "../../types";
 import { delay } from "../utils";
-import { getAzureAccessToken } from "./auth";
+import { getCachedAzureAccessToken, invalidateAzureAccessToken } from "./token-cache";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -12,10 +12,18 @@ export interface LongRunningOperation {
   initialStatusCode: number;
 }
 
+/** Per-request cap so a hung ARM call cannot pin an account switch indefinitely. */
+const ARM_REQUEST_TIMEOUT_MS = Number(process.env.AZURE_REQUEST_TIMEOUT_MS ?? 30_000);
+
+function withTimeout(timeoutMs: number): AbortSignal {
+  return typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(timeoutMs)
+    : new AbortController().signal;
+}
+
 export class AzureArmClient {
   private readonly env: AppEnv;
   private readonly account: DecryptedAccountRecord;
-  private tokenPromise: Promise<string> | null = null;
 
   constructor(env: AppEnv, account: DecryptedAccountRecord) {
     this.env = env;
@@ -23,14 +31,16 @@ export class AzureArmClient {
   }
 
   private async getAccessToken(): Promise<string> {
-    if (!this.tokenPromise) {
-      this.tokenPromise = getAzureAccessToken(this.env, this.account);
-    }
-
-    return this.tokenPromise;
+    // Process-level cache: a fresh client is built per request, so an
+    // instance-scoped promise would mean a cold AAD round-trip on every switch.
+    return getCachedAzureAccessToken(this.env, this.account);
   }
 
-  private async authorizedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  private async authorizedFetch(
+    input: RequestInfo | URL,
+    init: RequestInit = {},
+    options: { retryOnUnauthorized?: boolean } = {},
+  ): Promise<Response> {
     const token = await this.getAccessToken();
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${token}`);
@@ -38,10 +48,20 @@ export class AzureArmClient {
       headers.set("content-type", "application/json");
     }
 
-    return fetch(input, {
+    const response = await fetch(input, {
       ...init,
       headers,
+      signal: init.signal ?? withTimeout(ARM_REQUEST_TIMEOUT_MS),
     });
+
+    // A cached token can be revoked upstream; drop it and retry once.
+    if (response.status === 401 && options.retryOnUnauthorized !== false) {
+      // Await the invalidation so the retry cannot read the same bad token back.
+      await invalidateAzureAccessToken(this.account, "arm_401");
+      return this.authorizedFetch(input, init, { retryOnUnauthorized: false });
+    }
+
+    return response;
   }
 
   private createUrl(pathOrUrl: string, apiVersion?: string): string {

@@ -36,6 +36,14 @@ export const editAccountSchema = z.object({
   newName: z.string().trim().min(1, "新的账户名称不能为空").max(120, "账户名称过长"),
   email: optionalEmail,
   expirationDate: optionalDate,
+  // Credentials are optional so older clients (email/expiry only) keep working.
+  clientId: z.string().trim().uuid("客户端 ID 格式无效").optional(),
+  tenantId: z.string().trim().uuid("租户 ID 格式无效").optional(),
+  subscriptionId: z.string().trim().uuid("订阅 ID 格式无效").optional(),
+  clientSecret: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().trim().min(1, "客户端密码不能为空").optional(),
+  ),
 });
 
 export const selectAccountSchema = z.object({

@@ -23,6 +23,7 @@ import {
   type AzurePublicIpSku,
 } from "./azure/network";
 import { createOrUpdateResourceGroup, deleteResourceGroup } from "./azure/resource";
+import { invalidateVmList } from "./azure/vm-cache";
 import { delay } from "./utils";
 
 function generateAdminPassword(): string {
@@ -248,8 +249,11 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
       username: targetUsername,
       password: adminPassword,
     });
+    invalidateVmList(params.accountId, "vm.create.success");
   } catch (error) {
     await failTask(env, params.taskId, "虚拟机创建失败", error);
+    // A failed create can still leave resources behind, so the cached list is stale either way.
+    invalidateVmList(params.accountId, "vm.create.failure");
     if (client && subscriptionId && resourceGroup && resourceGroupCreated) {
       try {
         await deleteResourceGroup(client, subscriptionId, resourceGroup);
@@ -309,8 +313,11 @@ async function runVmLifecycle(env: AppEnv, params: VmLifecycleParams): Promise<v
       resourceGroup: params.resourceGroup,
       vmName: params.vmName,
     });
+    invalidateVmList(params.accountId, `vm.${params.action}.success`);
   } catch (error) {
     await failTask(env, params.taskId, "虚拟机操作失败", error);
+    // delete can partially succeed; the other actions may have applied too.
+    invalidateVmList(params.accountId, `vm.${params.action}.failure`);
   } finally {
     if (subscriptionLockKey) {
       releaseSubscriptionLock({ lockKey: subscriptionLockKey, owner: params.taskId });
@@ -408,8 +415,11 @@ async function runChangeIp(env: AppEnv, params: ChangeIpParams): Promise<void> {
       resourceGroup: params.resourceGroup,
       publicIp,
     });
+    invalidateVmList(params.accountId, "vm.change-ip.success");
   } catch (error) {
     await failTask(env, params.taskId, "更换公网 IP 失败", error);
+    // The public IP may already have changed even though the task failed.
+    invalidateVmList(params.accountId, "vm.change-ip.failure");
   } finally {
     if (subscriptionLockKey) {
       releaseSubscriptionLock({ lockKey: subscriptionLockKey, owner: params.taskId });

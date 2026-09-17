@@ -9,11 +9,39 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json; charset=utf-8");
   }
+  // Every /api/** route sits behind cookie auth, and responses are scoped to the
+  // requested account. Without these headers a browser or proxy may replay one
+  // account's payload for another account's request to the same account-free URL.
+  if (!headers.has("cache-control")) {
+    headers.set("cache-control", "no-store");
+  }
+  if (!headers.has("vary")) {
+    headers.set("vary", "Cookie");
+  }
 
   return new Response(JSON.stringify(body), {
     ...init,
     headers,
   });
+}
+
+/**
+ * Envelope for account-scoped responses: `accountId` is echoed from the request
+ * path (never from the session cookie), so a client can verify that a payload
+ * really belongs to the account it asked for. `extra` carries freshness metadata
+ * (cached/stale/warning) in the body, because clients that only parse JSON would
+ * otherwise miss it.
+ */
+export function accountJson(
+  accountId: string,
+  items: unknown,
+  init: ResponseInit = {},
+  extra: JsonRecord = {},
+): Response {
+  return jsonResponse(
+    { accountId, fetchedAt: new Date().toISOString(), items, ...extra },
+    init,
+  );
 }
 
 export function errorResponse(status: number, error: string, extra: JsonRecord = {}): Response {

@@ -367,10 +367,23 @@
     .account-pane .acc-grid { grid-template-columns: 1fr; gap: 6px; }
     .account-main { min-width: 0; width: 100%; }
     .account-empty { min-height: 320px; }
-    .detail-head {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
+    /* Account header: identity + figures + actions in one card. */
+    .acc-head {
+      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
+      padding: 14px 16px 10px; margin-bottom: 14px;
     }
-    /* 账户摘要：单行紧凑统计条，替代 5 个独立卡片 */
+    .acc-head-top {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    }
+    .acc-head-top .acc-id { min-width: 0; }
+    .acc-head-top .page-title { font-size: 22px; }
+    .acc-actions { flex-shrink: 0; }
+    /* Inside the card the insight bar is a section, not a standalone box. */
+    .acc-head .insight-bar {
+      border: 0; border-top: 1px solid var(--line); border-radius: 0;
+      background: transparent; padding: 10px 0 0; margin: 12px 0 0;
+    }
+    /* 账户摘要：单行紧凑统计条 */
     .insight-bar {
       display: flex; align-items: center; flex-wrap: wrap; gap: 0;
       border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card);
@@ -383,8 +396,25 @@
     .insight-bar .ib:first-child { border-left: 0; padding-left: 0; }
     .insight-bar .ib i { font-style: normal; color: var(--text-3); font-size: 11.5px; font-weight: 650; }
     .insight-bar .ib b { color: var(--text); font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; }
-    .insight-bar .ib-time { margin-left: auto; border-left: 0; padding-right: 0; }
+    /* The timestamp describes the cost query only, so it sits with the cost group
+       instead of floating at the far right — the far right belongs to the quota control. */
+    .insight-bar .ib-time { border-left: 0; padding-right: 0; }
     .insight-bar .ib-time b { font-weight: 650; color: var(--text-2); font-size: 12px; }
+    /* Icon-only quota refresh, pinned to the end of the bar. */
+    .insight-bar .ib-refresh {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; padding: 0; margin-left: auto;
+      border: 1px solid transparent; border-radius: 6px;
+      background: transparent; color: var(--text-3); cursor: pointer;
+      transition: background .12s ease, color .12s ease, border-color .12s ease;
+    }
+    .insight-bar .ib-refresh:hover:not(:disabled) {
+      background: var(--bg-hover); color: var(--text); border-color: var(--line);
+    }
+    .insight-bar .ib-refresh:focus-visible { outline: 2px solid var(--pr); outline-offset: 1px; }
+    .insight-bar .ib-refresh svg { width: 14px; height: 14px; display: block; }
+    .insight-bar .ib-refresh:disabled { cursor: default; }
+    .insight-bar .ib-refresh.spinning svg { animation: vmSpin 0.7s linear infinite; }
     .insight-warning {
       padding: 8px 10px; margin-bottom: 10px; border-radius: 8px; background: #fff7ed;
       border: 1px solid #fed7aa; color: #9a3412; font-size: 12px;
@@ -425,7 +455,8 @@
       .account-pane { position: static; max-height: none; }
       .account-list { max-height: 260px; }
       .account-detail-grid { grid-template-columns: 1fr; }
-      .detail-head { flex-direction: column; }
+      .acc-head-top { flex-direction: column; align-items: stretch; }
+      .acc-actions { justify-content: flex-start; }
       .vm-toolbar { flex-direction: column; }
       .vm-toolbar .fi:last-child { width: 100%; }
     }
@@ -843,19 +874,23 @@
             </div>
 
             <div id="view-vms" class="hidden">
-              <div class="detail-head">
-                <div style="min-width:0">
-                  <div class="page-title" id="vm-acc-title" style="font-size:22px">-</div>
-                  <div class="page-sub mono" id="vm-acc-sub">-</div>
+              <!-- One card owns the account's identity, its figures and its actions,
+                   so title / metrics / buttons read as a single account context. -->
+              <section class="acc-head">
+                <div class="acc-head-top">
+                  <div class="acc-id">
+                    <div class="page-title" id="vm-acc-title">-</div>
+                    <div class="page-sub mono" id="vm-acc-sub">-</div>
+                  </div>
+                  <div class="bgrp acc-actions">
+                    <button class="btn btn-g btn-sm" type="button" id="btn-account-details">账户详情</button>
+                    <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms"
+                            title="重新拉取该账户的订阅信息、AI 配额、消费与虚拟机列表">刷新全部</button>
+                    <button class="btn btn-p btn-sm" type="button" id="btn-create-vm">创建虚拟机</button>
+                  </div>
                 </div>
-                <div class="bgrp">
-                  <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms" title="刷新订阅信息、消费与虚拟机">刷新</button>
-                  <button class="btn btn-p btn-sm" type="button" id="btn-create-vm">创建虚拟机</button>
-                  <button class="btn btn-s btn-sm" type="button" id="btn-account-details">账户详情</button>
-                </div>
-              </div>
-
-              <div id="account-insights"></div>
+                <div id="account-insights"></div>
+              </section>
 
               <div class="tabs">
                 <div class="tab active" data-vtab="vms">虚拟机</div>
@@ -863,6 +898,7 @@
               </div>
 
               <div id="vtab-vms">
+                <div id="vm-stale-note" class="hidden"></div>
                 <div class="vm-toolbar">
                   <input class="fi" id="vm-search" placeholder="搜索虚拟机名称、资源组或 IP" />
                   <select class="fi" id="vm-status-filter">
@@ -1372,6 +1408,40 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
         <label class="fl" for="edit-acc-exp"><span class="fl-title">订阅到期日 <span style="color:var(--err)">*</span></span></label>
         <input class="fi" type="date" id="edit-acc-exp" style="max-width:220px" required />
       </div>
+
+      <div class="frow">
+        <div class="fg">
+          <label class="fl" for="edit-acc-cid">
+            <span class="fl-title">应用 (客户端) ID <span style="color:var(--err)">*</span></span>
+            <span class="fl-azure">appId / Application (client) ID</span>
+          </label>
+          <input class="fi mono" type="text" id="edit-acc-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" required />
+        </div>
+        <div class="fg">
+          <label class="fl" for="edit-acc-tid">
+            <span class="fl-title">目录 (租户) ID <span style="color:var(--err)">*</span></span>
+            <span class="fl-azure">tenant / Directory (tenant) ID</span>
+          </label>
+          <input class="fi mono" type="text" id="edit-acc-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" required />
+        </div>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="edit-acc-sid">
+          <span class="fl-title">订阅 ID <span style="color:var(--err)">*</span></span>
+          <span class="fl-azure">subscriptionId</span>
+        </label>
+        <input class="fi mono" type="text" id="edit-acc-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" required />
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="edit-acc-sec">
+          <span class="fl-title">客户端密钥 Value</span>
+          <span class="fl-azure">password / Client secret Value</span>
+        </label>
+        <input class="fi mono" type="password" id="edit-acc-sec" placeholder="留空表示不修改现有密钥" autocomplete="new-password" />
+        <div class="fhint">留空则保持原密钥不变。修改任一凭据后会清空该账户已缓存的订阅信息、配额与消费。</div>
+      </div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" type="button" data-close="mo-edit-acc">取消</button>
@@ -1382,6 +1452,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
 
 <div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
 
-<script src="/app.js?v=20260917b"></script>
+<script src="/app.js?v=20260917d"></script>
 </body>
 </html>

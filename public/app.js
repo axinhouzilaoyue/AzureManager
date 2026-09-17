@@ -4,7 +4,11 @@ const S = {
   accountStats: {}, // id -> { vmCount, subscriptionDisplayName, state, loading, error }
   activePage: 'overview',
   selectedAccId: null,
-  vms: [],
+  // accountId -> { vms, at, error, code }. Rendering reads only the slot of the
+  // currently selected account, so it is structurally unable to draw another
+  // account's machines.
+  vmsCache: new Map(),
+  vmsReads: new Map(), // accountId -> AbortController
   regions: [],
   activeVTab: 'vms',
   pendingAction: null,
@@ -17,22 +21,57 @@ const S = {
   accountInsights: {},
   accountDetails: {},
   revealedAccountSecret: false,
+  detailsAccountId: null, // account the open details modal belongs to
   vmSearch: '',
   vmStatusFilter: 'all',
   renderedVms: [],
   vmsLoading: false,
+  createVmAccountId: null, // account the create-VM dialog was opened for
+  quotaRefreshing: false,
 };
 
 // ── api ───────────────────────────────────────────────────────
-async function api(method, path, body) {
+// Account-scoped responses echo `accountId`, derived from the path. Comparing it
+// against the path the client asked for is what makes "this payload belongs to
+// the account I requested" a verifiable fact instead of an assumption.
+const ACCOUNT_PATH_RE = /^\/api\/accounts\/([0-9a-fA-F-]{36})\//;
+
+async function api(method, path, body, options = {}) {
   const res = await fetch(path, {
     method,
+    cache: 'no-store',
+    signal: options.signal,
     headers: body ? { 'content-type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { status: res.status });
+  const text = await res.text();
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = {}; }
+  }
+  if (!res.ok) {
+    throw Object.assign(new Error(data?.error || `请求失败 (${res.status})`), {
+      status: res.status,
+      code: data?.code,
+      retryable: data?.retryable === true,
+    });
+  }
+
+  // Ownership tripwire: reject a payload that claims a different account.
+  const expected = ACCOUNT_PATH_RE.exec(path)?.[1];
+  if (expected && data && typeof data.accountId === 'string' && data.accountId !== expected) {
+    console.warn('[api] discarding cross-account payload', { expected, received: data.accountId });
+    throw Object.assign(new Error('响应账户与请求账户不一致，已丢弃'), {
+      status: 0,
+      code: 'account_mismatch',
+      stale: true,
+    });
+  }
   return data;
+}
+
+function isAbortError(e) {
+  return !!e && (e.name === 'AbortError' || e.code === 20);
 }
 
 // ── helpers ───────────────────────────────────────────────────
@@ -224,6 +263,9 @@ function showAccountListView() {
     $('account-empty')?.classList.add('hidden');
     $('view-vms')?.classList.remove('hidden');
     showAccountDetailFromCache(acc);
+    renderVms();
+    // Re-validate in the background; the server-side cache makes this cheap.
+    loadVmsFor(acc.id);
   } else {
     S.selectedAccId = null;
     $('view-vms')?.classList.add('hidden');
@@ -325,6 +367,8 @@ function accountDetailValue(value) {
 
 function updateAccountHeader(account) {
   if (!account) return;
+  // The VM workspace header is a single global slot: only the current account may write it.
+  if (account.id !== S.selectedAccId) return;
   const detail = S.accountDetails[account.id] || account;
   const st = S.accountStats[account.id] || {};
   const title = accountDisplayName(detail);
@@ -354,6 +398,8 @@ function mergedAccountDetail(account) {
 
 function renderAccountDetailsModal(account) {
   if (!account) return;
+  // Never let a late response repaint the modal for a different account.
+  if (S.detailsAccountId && account.id !== S.detailsAccountId) return;
   const detail = mergedAccountDetail(account);
   const modal = $('mo-account-details');
   if (!modal) return;
@@ -441,7 +487,10 @@ async function loadAccountDetail(accountId) {
 
 function closeAccountDetailsModal() {
   S.revealedAccountSecret = false;
-  if (S.selectedAccId) delete S.accountDetails[S.selectedAccId];
+  // Delete by the account the modal belongs to, not by whatever is selected now,
+  // so a revealed plaintext secret does not linger in memory after a switch.
+  if (S.detailsAccountId) delete S.accountDetails[S.detailsAccountId];
+  S.detailsAccountId = null;
   if ($('detail-modal-content')) $('detail-modal-content').innerHTML = '';
   closeModal('mo-account-details');
 }
@@ -450,6 +499,7 @@ async function openAccountDetails(accountId) {
   const account = S.accounts.find((item) => item.id === accountId);
   if (!account) return;
   S.revealedAccountSecret = false;
+  S.detailsAccountId = accountId;
   if (S.accountDetails[accountId]) {
     $('detail-modal-loading')?.classList.add('hidden');
     $('detail-modal-content').innerHTML = '';
@@ -469,7 +519,7 @@ async function openAccountDetails(accountId) {
 }
 
 async function toggleAccountSecret() {
-  const accountId = S.selectedAccId;
+  const accountId = S.detailsAccountId;
   if (!accountId) return;
   if (!S.accountDetails[accountId]) await loadAccountDetail(accountId);
   S.revealedAccountSecret = !S.revealedAccountSecret;
@@ -478,7 +528,7 @@ async function toggleAccountSecret() {
 window.toggleAccountSecret = toggleAccountSecret;
 
 async function copyAccountSecret() {
-  const detail = S.accountDetails[S.selectedAccId];
+  const detail = S.accountDetails[S.detailsAccountId];
   if (!detail?.clientSecret) return toast('暂未读取到密钥', 'error');
   await copyText(detail.clientSecret);
 }
@@ -509,6 +559,7 @@ async function refreshAccountInfo(accountId) {
     loadAccountStats(accountId, { force: true }),
     loadAccountInsights(accountId, true),
   ]);
+  if (accountId !== S.selectedAccId) return;
   const account = S.accounts.find((item) => item.id === accountId);
   updateAccountHeader(account);
   if (!$('mo-account-details')?.classList.contains('hidden')) {
@@ -520,6 +571,8 @@ async function refreshAccountInfo(accountId) {
 function paintAccGrid() {
   const g = $('acc-grid');
   if (!g) return;
+  // Repainting mid-drag destroys the drag source node and strands the dragend handler.
+  if (S.dragAccountId) return;
   const count = $('account-list-count');
   if (count) count.textContent = String(visibleAccounts().length);
   if (!S.accounts.length) {
@@ -540,7 +593,31 @@ function paintAccGrid() {
 
 function renderAccGrid() {
   paintAccGrid();
-  visibleAccounts().forEach(a => loadAccountStats(a.id));
+  visibleAccounts().forEach(a => queueAccountStats(a.id));
+}
+
+// Each account card costs three Azure calls. Fanning out one request per account
+// at once saturates the server's egress and ARM quota, which is what made VM
+// switches feel stalled. Keep the burst bounded.
+const ACCOUNT_STATS_CONCURRENCY = 3;
+let statsRunning = 0;
+const statsQueue = [];
+
+function queueAccountStats(accountId) {
+  if (!accountId) return;
+  if (!statsQueue.includes(accountId)) statsQueue.push(accountId);
+  pumpAccountStats();
+}
+
+function pumpAccountStats() {
+  while (statsRunning < ACCOUNT_STATS_CONCURRENCY && statsQueue.length) {
+    const accountId = statsQueue.shift();
+    statsRunning += 1;
+    Promise.resolve(loadAccountStats(accountId)).finally(() => {
+      statsRunning -= 1;
+      pumpAccountStats();
+    });
+  }
 }
 
 async function loadAccountStats(accountId, { force = false } = {}) {
@@ -665,9 +742,44 @@ function handleAccountDrop(targetId) {
     .catch((e) => toast(`账户排序保存失败: ${e.message}`, 'error'));
 }
 
+// ── insight bar notices ───────────────────────────────────────
+// Warnings such as "累计消费刷新失败，已沿用上一次成功结果" are transient by design:
+// they describe one failed refresh, not a permanent property of the account. They
+// are kept in UI state (never re-derived from the persisted costWarning) and
+// auto-dismiss, so reloading the page does not bring them back.
+const INSIGHT_NOTICE_TTL_MS = 6000;
+let insightNotice = null; // { accountId, message }
+let insightNoticeTimer = null;
+
+function showInsightNotice(accountId, message, ttlMs = INSIGHT_NOTICE_TTL_MS) {
+  if (!message) {
+    clearInsightNotice(accountId);
+    return;
+  }
+  insightNotice = { accountId, message };
+  renderAccountInsights(accountId);
+  if (insightNoticeTimer) clearTimeout(insightNoticeTimer);
+  insightNoticeTimer = setTimeout(() => {
+    insightNoticeTimer = null;
+    const current = insightNotice?.accountId;
+    insightNotice = null;
+    if (current && current === S.selectedAccId) renderAccountInsights(current);
+  }, ttlMs);
+}
+
+function clearInsightNotice(accountId) {
+  if (insightNoticeTimer) {
+    clearTimeout(insightNoticeTimer);
+    insightNoticeTimer = null;
+  }
+  if (!accountId || insightNotice?.accountId === accountId) insightNotice = null;
+}
+
 function renderAccountInsights(accountId) {
   const host = $('account-insights');
   if (!host) return;
+  // The insight bar is a single global slot: only the current account may write it.
+  if (accountId !== S.selectedAccId) return;
   const account = S.accounts.find((item) => item.id === accountId);
   const data = S.accountInsights[accountId] || {};
   const loading = data.loading ? '查询中…' : '';
@@ -677,8 +789,7 @@ function renderAccountInsights(accountId) {
   const acc = data.acc ?? account?.costAcc;
   const history = data.history ?? account?.costHistory;
   const quota = data.quotaTier || account?.quotaTier || '未获取';
-  const warningText = data.warning || account?.costWarning || '';
-  const shortWarning = warningText.length > 180 ? `${warningText.slice(0, 180)}…` : warningText;
+  const notice = insightNotice?.accountId === accountId ? insightNotice.message : '';
   const mtdText = mtd !== null && mtd !== undefined && mtd !== ''
     ? `${mtd}${unit}`
     : (loading || '未获取');
@@ -697,9 +808,17 @@ function renderAccountInsights(accountId) {
       <span class="ib"><i>本月</i><b>${esc(mtdText)}</b></span>
       <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
       <span class="ib"><i>历史</i><b>${esc(historyText)}</b></span>
-      <span class="ib ib-time"><i>更新</i><b>${esc(updateText)}</b></span>
+      <span class="ib ib-time"><i>消费更新</i><b>${esc(updateText)}</b></span>
+      <button class="ib-refresh${S.quotaRefreshing ? ' spinning' : ''}" type="button" id="btn-refresh-quota"
+              title="只刷新 AI 配额层级" aria-label="只刷新 AI 配额层级"
+              ${S.quotaRefreshing ? 'disabled' : ''}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+      </button>
     </div>
-    ${shortWarning ? `<div class="insight-warning">${esc(shortWarning)}</div>` : ''}`;
+    ${notice ? `<div class="insight-warning">${esc(notice)}</div>` : ''}`;
 }
 window.openAccountDetails = openAccountDetails;
 
@@ -719,7 +838,7 @@ async function loadAccountInsights(accountId, force = false) {
       currency: account?.costCurrency,
       loaded: true,
       loading: false,
-      warning: account?.costWarning || '当前显示 10 分钟内的缓存数据',
+      warning: null,
     };
     renderAccountInsights(accountId);
     return;
@@ -737,6 +856,8 @@ async function loadAccountInsights(accountId, force = false) {
       account.costUpdatedAt = data.queriedAt;
       account.costWarning = data.warning || null;
     }
+    // Surface the fallback notice briefly; it is not a permanent condition.
+    showInsightNotice(accountId, data.warning || null);
   } catch (e) {
     S.accountInsights[accountId] = { ...previous, loading: false, warning: e.message };
     toast(`消费查询失败: ${e.message}`, 'error');
@@ -752,6 +873,42 @@ async function refreshAccountCost(accountId) {
   await loadAccountInsights(accountId, true);
 }
 
+/**
+ * Refresh only the quota tier (one lightweight ARM call). Deliberately does not
+ * touch the VM list or the cost figures.
+ */
+async function refreshAccountQuota(accountId) {
+  const id = accountId || S.selectedAccId;
+  if (!id || S.quotaRefreshing) return;
+  S.quotaRefreshing = true;
+  renderAccountInsights(id);
+  try {
+    const payload = await api('GET', `/api/accounts/${id}/quota`);
+    if (id !== S.selectedAccId) return;
+    const quotaTier = payload?.items?.quotaTier || '未获取';
+    // Both sources feed the label, so update them together to avoid one winning.
+    S.accountInsights[id] = { ...(S.accountInsights[id] || {}), quotaTier };
+    const account = S.accounts.find((a) => a.id === id);
+    if (account) account.quotaTier = quotaTier;
+    // An open details modal reads quotaTier from S.accountDetails first, so it
+    // would otherwise keep showing the pre-refresh value.
+    if (S.accountDetails[id]) S.accountDetails[id] = { ...S.accountDetails[id], quotaTier };
+    if (S.detailsAccountId === id && !$('mo-account-details')?.classList.contains('hidden')) {
+      renderAccountDetailsModal(account || S.accountDetails[id]);
+    }
+    toast(`AI 配额已更新：${quotaTier}`, 'success');
+  } catch (e) {
+    if (id === S.selectedAccId) showInsightNotice(id, `配额刷新失败：${e.message}`);
+  } finally {
+    S.quotaRefreshing = false;
+    if (id === S.selectedAccId) {
+      renderAccountInsights(id);
+      paintAccGrid();
+    }
+  }
+}
+window.refreshAccountQuota = refreshAccountQuota;
+
 async function openVmView(accId, e) {
   if (e) e.stopPropagation();
   S.selectedAccId = accId;
@@ -763,17 +920,26 @@ async function openVmView(accId, e) {
   document.querySelectorAll('.tab[data-vtab]').forEach(x => {
     x.classList.toggle('active', x.dataset.vtab === 'vms');
   });
-  $('vtab-vms').classList.remove('hidden');
-  $('vtab-tasks').classList.add('hidden');
+  $('vtab-vms')?.classList.remove('hidden');
+  $('vtab-tasks')?.classList.add('hidden');
 
   const acc = S.accounts.find(a => a.id === accId);
   if (!acc) return;
   $('account-empty')?.classList.add('hidden');
   $('view-vms')?.classList.remove('hidden');
 
-  // 立刻清空上一个账户的数据，避免切换后长时间显示旧账户的虚拟机。
-  S.vms = [];
-  S.vmsLoading = true;
+  // Anything scoped to the previous account must not survive the switch.
+  abortVmsReads();
+  clearInsightNotice();
+  S.quotaRefreshing = false;
+  S.vmsLoading = !S.vmsCache.has(accId);
+  S.regions = [];
+  S.pendingAction = null;
+  S.createVmAccountId = accId;
+  closeModal('mo-confirm');
+  closeModal('mo-create-vm');
+  closeAccountDetailsModal();
+
   renderVms();
   S.accountInsights[accId] = { ...(S.accountInsights[accId] || {}), loading: true };
   showAccountDetailFromCache(acc);
@@ -788,10 +954,16 @@ async function openVmView(accId, e) {
   });
   S.activePage = 'accounts';
 
-  await api('POST', '/api/session', { accountId: accId }).catch(() => {});
-  // 可用区域只在创建虚拟机时才需要，不再放进切换账户的关键路径。
+  // The session cookie is UI memory only ("last account I viewed"): it no longer
+  // decides whose VMs are fetched, so there is nothing to order against. The
+  // write runs in parallel with the data reads instead of gating them.
+  const rememberLastViewed = api('POST', '/api/session', { accountId: accId }).catch((err) => {
+    console.warn('[ui] failed to persist last-viewed account', err);
+  });
+
   await Promise.all([
-    loadVms(),
+    rememberLastViewed,
+    loadVmsFor(accId),
     loadAccountStats(accId),
     loadAccountInsights(accId),
   ]);
@@ -800,6 +972,7 @@ window.openVmView = openVmView;
 
 function backToAccountList() {
   S.selectedAccId = null;
+  abortVmsReads();
   api('DELETE', '/api/session').catch(() => {});
   $('view-vms')?.classList.add('hidden');
   $('account-empty')?.classList.remove('hidden');
@@ -809,26 +982,61 @@ function backToAccountList() {
 // ── VMs ───────────────────────────────────────────────────────
 async function refreshWorkspace() {
   if (!S.selectedAccId) return;
-  await Promise.allSettled([loadVms(), refreshAccountInfo(S.selectedAccId)]);
+  await Promise.allSettled([loadVmsFor(S.selectedAccId, { force: true }), refreshAccountInfo(S.selectedAccId)]);
   toast('已刷新');
 }
 
-let vmsRequestSeq = 0;
+/** The only place the VM table gets its data: the slot of the current account. */
+function currentVmsEntry() {
+  return S.selectedAccId ? S.vmsCache.get(S.selectedAccId) || null : null;
+}
 
-async function loadVms() {
-  const seq = (vmsRequestSeq += 1);
-  S.vmsLoading = true;
-  renderVms();
+function abortVmsReads() {
+  S.vmsReads.forEach((controller) => controller.abort());
+  S.vmsReads.clear();
+}
+
+async function loadVmsFor(accId, { force = false } = {}) {
+  if (!accId) return;
+  S.vmsReads.get(accId)?.abort();
+  const controller = new AbortController();
+  S.vmsReads.set(accId, controller);
+
+  if (!S.vmsCache.has(accId)) {
+    S.vmsLoading = true;
+    renderVms();
+  }
   try {
-    const vms = await api('GET', '/api/vms');
-    if (seq !== vmsRequestSeq) return; // 已被更晚的一次切换取代
-    S.vms = vms;
+    const query = force ? '?refresh=1' : '';
+    const payload = await api('GET', `/api/accounts/${accId}/vms${query}`, undefined, {
+      signal: controller.signal,
+    });
+    // This response is about `accId`; drop it if the user has moved on.
+    if (accId !== S.selectedAccId) return;
+    S.vmsCache.set(accId, {
+      vms: Array.isArray(payload?.items) ? payload.items : [],
+      at: Date.parse(payload?.fetchedAt || '') || Date.now(),
+      error: null,
+      code: null,
+      stale: payload?.stale === true,
+      warning: typeof payload?.warning === 'string' ? payload.warning : null,
+      cacheAgeMs: Number.isFinite(payload?.cacheAgeMs) ? payload.cacheAgeMs : 0,
+    });
   } catch (e) {
-    if (seq !== vmsRequestSeq) return;
-    S.vms = [];
-    toast(`加载虚拟机失败: ${e.message}`, 'error');
+    if (isAbortError(e) || accId !== S.selectedAccId || e.stale) return;
+    const previous = S.vmsCache.get(accId);
+    S.vmsCache.set(accId, {
+      vms: previous?.vms ?? [],
+      at: previous?.at ?? 0,
+      error: e.message,
+      code: e.code || null,
+      stale: previous?.stale ?? false,
+      warning: previous?.warning ?? null,
+      cacheAgeMs: previous?.cacheAgeMs ?? 0,
+    });
   } finally {
-    if (seq === vmsRequestSeq) {
+    if (S.vmsReads.get(accId) === controller) S.vmsReads.delete(accId);
+    if (accId === S.selectedAccId) {
       S.vmsLoading = false;
       renderVms();
     }
@@ -857,7 +1065,7 @@ function formatUptime(vm) {
 
 function filteredVms() {
   const query = S.vmSearch.trim().toLowerCase();
-  return S.vms.filter((vm) => {
+  return (currentVmsEntry()?.vms || []).filter((vm) => {
     const status = String(vm.status || '').toLowerCase();
     const matchesStatus = S.vmStatusFilter === 'all'
       || (S.vmStatusFilter === 'running' && status.includes('running'))
@@ -879,13 +1087,33 @@ function vmDotClass(status) {
   return 'inf';
 }
 
+function renderVmsStaleNote(entry) {
+  const host = $('vm-stale-note');
+  if (!host) return;
+  const text = entry?.warning
+    || (entry?.stale ? `数据可能不是最新（${Math.round((entry.cacheAgeMs || 0) / 1000)} 秒前）` : '');
+  if (!text) {
+    host.classList.add('hidden');
+    host.textContent = '';
+    return;
+  }
+  host.classList.remove('hidden');
+  host.innerHTML = `<div class="err-box" style="margin-bottom:10px">${esc(text)}</div>`;
+}
+
 function renderVms() {
   const tb = $('vm-tbody');
+  if (!tb) return;
   const rows = filteredVms();
   S.renderedVms = rows;
   closeVmOpsMenu(true);
 
-  if (S.vmsLoading && !S.vms.length) {
+  const entry = currentVmsEntry();
+  const known = !!entry;
+  const items = entry?.vms || [];
+  renderVmsStaleNote(entry);
+
+  if (!known || (S.vmsLoading && !items.length)) {
     tb.innerHTML = `<tr><td colspan="6" style="padding:0">
       <div class="vm-loading">
         <span class="vm-spinner" aria-hidden="true"></span>正在加载虚拟机…
@@ -894,7 +1122,19 @@ function renderVms() {
     return;
   }
 
-  if (!S.vms.length) {
+  // A failed fetch must never be rendered as "this subscription has no VMs".
+  if (entry.error && !items.length) {
+    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
+      <div class="err-box" style="border:none;background:transparent;padding:12px">
+        <strong>${entry.code === 'azure_timeout' ? 'Azure 查询超时' : '虚拟机列表加载失败'}</strong>
+        <div class="muted small" style="margin-top:6px">${esc(entry.error)}</div>
+        <div style="margin-top:10px"><button class="btn btn-p" type="button" onclick="refreshWorkspace()">重试</button></div>
+      </div>
+    </td></tr>`;
+    return;
+  }
+
+  if (!items.length) {
     tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
         <h3>此订阅下暂无虚拟机</h3>
@@ -1064,10 +1304,12 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
     sel.innerHTML = `<option value="">选择区域后加载…</option>`;
     return;
   }
+  const accId = S.selectedAccId;
   sel.innerHTML = `<option value="">加载规格中…</option>`;
   sel.disabled = true;
   try {
     const sizes = await api('GET', `/api/vm-sizes?location=${encodeURIComponent(location)}`);
+    if (accId !== S.selectedAccId) return;
     renderVmSizeOptions(Array.isArray(sizes) ? sizes : [], preferred);
     if (hint) {
       const freeCount = (Array.isArray(sizes) ? sizes : []).filter(s => s.freeTierHint).length;
@@ -1077,6 +1319,7 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
     }
   } catch (e) {
     // Fallback static list so create flow still works.
+    if (accId !== S.selectedAccId) return;
     renderVmSizeOptions([
       { name: 'Standard_B1s', numberOfCores: 1, memoryInMB: 1024, maxDataDiskCount: 2, freeTierHint: true },
       { name: 'Standard_B2ats_v2', numberOfCores: 2, memoryInMB: 1024, maxDataDiskCount: 4, freeTierHint: true },
@@ -1089,13 +1332,17 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
     ], preferred);
     if (hint) hint.textContent = `实时查询失败，已使用备用列表：${e.message}`;
   } finally {
-    sel.disabled = false;
+    if (accId === S.selectedAccId) sel.disabled = false;
   }
 }
 
 async function loadRegions() {
+  const accId = S.selectedAccId;
+  if (!accId) return;
   try {
-    S.regions = await api('GET', '/api/regions');
+    const regions = await api('GET', '/api/regions');
+    if (accId !== S.selectedAccId) return;
+    S.regions = Array.isArray(regions) ? regions : [];
     const sel = $('create-region');
     if (!sel) return;
     sel.innerHTML = S.regions.map(r =>
@@ -1108,9 +1355,11 @@ async function loadIpPermission(location) {
   const sel = $('create-ip');
   const hint = $('create-ip-hint');
   if (!sel || !location) return;
+  const accId = S.selectedAccId;
   sel.disabled = true;
   try {
     const data = await api('GET', `/api/ip-permission?location=${encodeURIComponent(location)}`);
+    if (accId !== S.selectedAccId) return;
     const permission = data.permission || 'Both';
     sel.innerHTML = '';
     if (permission === 'Dynamic') {
@@ -1131,6 +1380,7 @@ async function loadIpPermission(location) {
       if (hint) hint.textContent = '当前区域同时支持 Dynamic 和 Static。';
     }
   } catch (e) {
+    if (accId !== S.selectedAccId) return;
     sel.disabled = false;
     if (hint) hint.textContent = `IP 类型检测失败，保留手动选择：${e.message}`;
   }
@@ -1139,7 +1389,10 @@ async function loadIpPermission(location) {
 // ── VM actions ────────────────────────────────────────────────
 function vmAction(action, rg, vm) {
   const labels = { start: '启动', stop: '停止', restart: '重启', delete: '删除资源组' };
-  S.pendingAction = { kind: 'vm', action, resourceGroup: rg, vmName: vm };
+  // Pin the account the action belongs to. `rg`/`vm` come from the rendered list,
+  // so resolving the target account from the session cookie could apply the
+  // action to a same-named resource group in a different subscription.
+  S.pendingAction = { kind: 'vm', accountId: S.selectedAccId, action, resourceGroup: rg, vmName: vm };
   $('cf-title').textContent = `${labels[action]} — ${vm}`;
   $('cf-desc').textContent = action === 'delete'
     ? `确认删除资源组 ${rg}？此操作不可撤销，将删除该资源组内全部资源。`
@@ -1150,7 +1403,7 @@ function vmAction(action, rg, vm) {
 window.vmAction = vmAction;
 
 function changeIp(rg, vm) {
-  S.pendingAction = { kind: 'ip', resourceGroup: rg, vmName: vm };
+  S.pendingAction = { kind: 'ip', accountId: S.selectedAccId, resourceGroup: rg, vmName: vm };
   $('cf-title').textContent = `更换公网 IP — ${vm}`;
   $('cf-desc').textContent = `确认为虚拟机 ${vm} 更换公网 IP？切换期间连接会短暂中断。`;
   $('btn-cf').className = 'btn btn-p';
@@ -1163,10 +1416,15 @@ async function confirmPendingAction() {
   if (!p) return;
   closeModal('mo-confirm');
   S.pendingAction = null;
+  const accountId = p.accountId;
+  if (!accountId) {
+    toast('无法确定目标账户，请重新点击操作', 'error');
+    return;
+  }
   try {
     const task = p.kind === 'ip'
-      ? await api('POST', '/api/vm-change-ip', { resourceGroup: p.resourceGroup, vmName: p.vmName })
-      : await api('POST', '/api/vm-action', {
+      ? await api('POST', `/api/accounts/${accountId}/vm-change-ip`, { resourceGroup: p.resourceGroup, vmName: p.vmName })
+      : await api('POST', `/api/accounts/${accountId}/vm-action`, {
           action: p.action,
           resourceGroup: p.resourceGroup,
           vmName: p.vmName,
@@ -1205,14 +1463,17 @@ function renderTaskList(tasks) {
 }
 
 async function loadTasks() {
-  if (!S.selectedAccId) {
+  const accId = S.selectedAccId;
+  if (!accId) {
     renderTaskList([]);
     return;
   }
   try {
     const tasks = await api('GET', '/api/tasks');
+    if (accId !== S.selectedAccId) return;
     renderTaskList(Array.isArray(tasks) ? tasks : []);
   } catch (e) {
+    if (accId !== S.selectedAccId) return;
     toast(`加载任务失败: ${e.message}`, 'error');
     renderTaskList([]);
   }
@@ -1232,7 +1493,7 @@ async function pollTask(taskId) {
       if (t.status === 'success') {
         toast('任务完成', 'success');
         S.trackingTasks.delete(taskId);
-        if (S.selectedAccId) loadVms();
+        if (S.selectedAccId) loadVmsFor(S.selectedAccId, { force: true });
         if (S.activeVTab === 'tasks') loadTasks();
         await showTaskDetail(taskId);
         return;
@@ -1312,6 +1573,10 @@ window.showTaskDetail = showTaskDetail;
 // ── create VM ─────────────────────────────────────────────────
 async function submitCreateVm() {
   const btn = $('btn-submit-vm');
+  if (!S.createVmAccountId) {
+    toast('请先选择一个 Azure 账户', 'error');
+    return;
+  }
   if (btn) btn.disabled = true;
   try {
     const ud = $('create-ud').value.trim();
@@ -1330,7 +1595,7 @@ async function submitCreateVm() {
     if ((openAllInbound || openAllOutbound) && !confirm('确认开放全部入站或出站流量？这会显著扩大实例的网络暴露面。')) {
       return;
     }
-    const task = await api('POST', '/api/create-vm', {
+    const task = await api('POST', `/api/accounts/${S.createVmAccountId}/create-vm`, {
       region: $('create-region').value,
       vmSize: $('create-size').value,
       osImage: $('create-os').value,
@@ -1709,36 +1974,71 @@ function openEditAccount(accountId, e) {
   if ($('edit-acc-name')) $('edit-acc-name').value = acc.name || '';
   if ($('edit-acc-email')) $('edit-acc-email').value = acc.email || accountDisplayName(acc) || '';
   $('edit-acc-exp').value = acc.expirationDate || '';
+  if ($('edit-acc-cid')) $('edit-acc-cid').value = acc.clientId || '';
+  if ($('edit-acc-tid')) $('edit-acc-tid').value = acc.tenantId || '';
+  if ($('edit-acc-sid')) $('edit-acc-sid').value = acc.subscriptionId || '';
+  // The stored secret is never sent back to the browser; blank means "keep it".
+  if ($('edit-acc-sec')) $('edit-acc-sec').value = '';
   if (!$('mo-account-details')?.classList.contains('hidden')) closeAccountDetailsModal();
   openModal('mo-edit-acc');
 }
 window.openEditAccount = openEditAccount;
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 async function saveEditAccount() {
   const btn = $('btn-save-edit-acc');
   const email = $('edit-acc-email')?.value.trim() || '';
   const exp = $('edit-acc-exp').value || '';
+  const clientId = $('edit-acc-cid')?.value.trim() || '';
+  const tenantId = $('edit-acc-tid')?.value.trim() || '';
+  const subscriptionId = $('edit-acc-sid')?.value.trim() || '';
+  const clientSecret = $('edit-acc-sec')?.value || '';
+
   if (!email || !isValidEmail(email)) return toast(!email ? '请填写邮箱' : '邮箱格式无效', 'error');
   if (!exp) return toast('请选择订阅到期日', 'error');
+  if (!UUID_RE.test(clientId)) return toast('应用 (客户端) ID 格式无效', 'error');
+  if (!UUID_RE.test(tenantId)) return toast('目录 (租户) ID 格式无效', 'error');
+  if (!UUID_RE.test(subscriptionId)) return toast('订阅 ID 格式无效', 'error');
 
   if (btn) btn.disabled = true;
   try {
     const accountId = $('edit-acc-id').value;
-    await api('POST', '/api/accounts/edit', {
+    const result = await api('POST', '/api/accounts/edit', {
       accountId,
       newName: email, // display name = email
       email,
       expirationDate: exp,
+      clientId,
+      tenantId,
+      subscriptionId,
+      // Omit entirely when untouched so the server keeps the stored ciphertext.
+      ...(clientSecret ? { clientSecret } : {}),
     });
     closeModal('mo-edit-acc');
+
+    // Credentials changed => every Azure-derived value for this account was cleared
+    // server-side; drop the client-side copies too so nothing stale is redisplayed.
+    if (result?.credentialsChanged) {
+      delete S.accountInsights[accountId];
+      delete S.accountDetails[accountId];
+      S.accountStats[accountId] = {};
+      S.vmsCache.delete(accountId);
+    }
+
     S.accounts = await api('GET', '/api/accounts');
-    const acc = S.accounts.find(a => a.id === S.selectedAccId) || S.accounts.find(a => a.id === accountId);
+    const acc = S.accounts.find(a => a.id === accountId);
     if (acc && S.selectedAccId === acc.id) {
       updateAccountHeader(acc);
-      if (!$('mo-account-details')?.classList.contains('hidden')) await loadAccountDetail(acc.id);
+      renderAccountInsights(acc.id);
+      paintAccGrid();
+      loadVmsFor(acc.id, { force: true });
+      loadAccountStats(acc.id, { force: true });
+      loadAccountInsights(acc.id, true);
+    } else {
+      renderAccGrid();
     }
     refreshOverview();
-    renderAccGrid();
     toast('账户已更新', 'success');
   } catch (e) {
     toast(e.message, 'error');
@@ -1949,6 +2249,7 @@ function bindUI() {
     }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
+    if (t.closest('#btn-refresh-quota')) return void refreshAccountQuota(S.selectedAccId);
     if (t.closest('#btn-account-details')) return void openAccountDetails(S.selectedAccId);
     if (t.closest('#btn-toggle-account-secret')) return void toggleAccountSecret();
     if (t.closest('#btn-copy-account-secret')) return void copyAccountSecret();
@@ -2031,6 +2332,7 @@ function bindUI() {
     accGrid.addEventListener('dragend', () => {
       S.dragAccountId = null;
       accGrid.querySelectorAll('.acc-card.dragging').forEach((card) => card.classList.remove('dragging'));
+      paintAccGrid();
     });
   }
 

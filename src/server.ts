@@ -21,12 +21,22 @@ import {
   setGlobalSshSettings,
   setGlobalStartupScript,
   updateAccountCost,
+  updateAccountCredentials,
   updateAccountInsights,
-  updateAccountMetadata,
 } from "./lib/db";
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
-import { countVirtualMachines, listVirtualMachines, listVmSizes } from "./lib/azure/compute";
+import { countVirtualMachines, listVmSizes } from "./lib/azure/compute";
+import {
+  getVmCacheStats,
+  getVmList,
+  invalidateVmList,
+  resetVmCache,
+} from "./lib/azure/vm-cache";
+import {
+  invalidateAzureAccessToken,
+  resetAzureTokenCache,
+} from "./lib/azure/token-cache";
 import { CostQueryError, getAzureCosts, getQuotaTier } from "./lib/azure/cost";
 import { getIpPermission } from "./lib/azure/network";
 import { getSubscriptionDetails, listSubscriptionLocations, registerRequiredProviders } from "./lib/azure/subscription";
@@ -44,7 +54,7 @@ import {
   updateStartupScriptSchema,
   vmActionSchema,
 } from "./lib/validation";
-import { errorResponse, jsonResponse, readJson } from "./lib/utils";
+import { accountJson, errorResponse, jsonResponse, readJson } from "./lib/utils";
 import type { ZodType } from "zod";
 
 // ---- secrets ----
@@ -91,6 +101,8 @@ const ENV: AppEnv = {
 };
 
 // ---- helpers ----
+const OVERVIEW_ACCOUNT_CONCURRENCY = parseInt(process.env.OVERVIEW_ACCOUNT_CONCURRENCY ?? "3");
+
 async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T | Response> {
   const payload = await readJson<unknown>(req);
   const parsed = schema.safeParse(payload);
@@ -115,6 +127,32 @@ function formatAzureError(error: unknown): string {
   if (message.includes("AuthorizationFailed")) return "凭据有效，但当前服务主体没有足够的订阅权限。";
   if (message.includes("account_not_found")) return "账户不存在。";
   return "Azure 检查失败，请确认订阅 ID、租户、服务主体权限以及当前目录是否正确。";
+}
+
+/** `AbortSignal.timeout` surfaces as a DOMException named TimeoutError. */
+function isTimeoutError(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+/** Small bounded-concurrency map so cross-account fan-out cannot saturate the egress. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index]);
+    }
+  });
+  await Promise.all(runners);
+  return results;
 }
 
 function pickString(source: Record<string, unknown>, keys: string[]): string {
@@ -255,7 +293,11 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   const auth = await requireAuth(ENV, req);
   if (auth instanceof Response) return auth;
 
-  // session account selection
+  // session account selection.
+  // UI memory only ("which account was I last looking at"). It MUST NOT be read
+  // to decide whose data a request returns — account identity belongs in the
+  // request path (see the account-scoped routes below). A reordered or stale
+  // write here can therefore never change what data a request gets back.
   if (req.method === "POST" && url.pathname === "/api/session") {
     const body = await parseBody(req, selectAccountSchema);
     if (body instanceof Response) return body;
@@ -335,32 +377,33 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   // cross-account VM fleet for overview page
   if (req.method === "GET" && url.pathname === "/api/overview/vms") {
     const accounts = await listAccounts(ENV);
-    const chunks = await Promise.all(
-      accounts.map(async (account) => {
-        try {
-          const decrypted = await getDecryptedAccountOrThrow(ENV, account.id);
-          const client = new AzureArmClient(ENV, decrypted);
-          const vms = await listVirtualMachines(client, decrypted.subscriptionId);
-          const accountLabel = (account.email || account.name || "未命名账户").trim();
-          return vms.map((vm) => ({
-            accountId: account.id,
-            accountLabel,
-            name: vm.name,
-            status: vm.status,
-            location: vm.location,
-            vmSize: vm.vmSize,
-            publicIp: vm.publicIp,
-            ipAllocationMethod: vm.ipAllocationMethod,
-            diskSizeGb: vm.diskSizeGb,
-            uptimeDays: vm.uptimeDays,
-            timeCreated: vm.timeCreated,
-            resourceGroup: vm.resourceGroup,
-          }));
-        } catch {
-          return [] as Array<Record<string, unknown>>;
-        }
-      }),
-    );
+    const degradedAccountIds: string[] = [];
+    // Reuses the same per-account cache the account workspace reads, and bounds
+    // concurrency so a large fleet cannot saturate the egress or trip ARM throttling.
+    const chunks = await mapWithConcurrency(accounts, OVERVIEW_ACCOUNT_CONCURRENCY, async (account) => {
+      try {
+        const snapshot = await getVmList(ENV, account.id);
+        const accountLabel = (account.email || account.name || "未命名账户").trim();
+        return snapshot.vms.map((vm) => ({
+          accountId: account.id,
+          accountLabel,
+          name: vm.name,
+          status: vm.status,
+          location: vm.location,
+          vmSize: vm.vmSize,
+          publicIp: vm.publicIp,
+          ipAllocationMethod: vm.ipAllocationMethod,
+          diskSizeGb: vm.diskSizeGb,
+          uptimeDays: vm.uptimeDays,
+          timeCreated: vm.timeCreated,
+          resourceGroup: vm.resourceGroup,
+        }));
+      } catch (error) {
+        degradedAccountIds.push(account.id);
+        console.warn("Overview VM fetch failed", account.id, error);
+        return [] as Array<Record<string, unknown>>;
+      }
+    });
     const items = chunks.flat().sort((a, b) => {
       const byAccount = String(a.accountLabel).localeCompare(String(b.accountLabel));
       if (byAccount !== 0) return byAccount;
@@ -372,8 +415,17 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       vmCount: items.length,
       runningCount: running,
       stoppedCount: Math.max(0, items.length - running),
+      degradedAccountIds,
       items,
     });
+  }
+
+  // Cache diagnostics are test/ops only and stay off unless explicitly enabled.
+  if (req.method === "POST" && url.pathname === "/api/_debug/cache/reset") {
+    if (process.env.DEBUG_CACHE !== "1") return errorResponse(404, "接口不存在");
+    resetVmCache();
+    resetAzureTokenCache();
+    return jsonResponse({ ok: true, ...getVmCacheStats() });
   }
 
   // account check (with credentials in body)
@@ -443,19 +495,63 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (req.method === "POST" && url.pathname === "/api/accounts/edit") {
     const body = await parseBody(req, editAccountSchema);
     if (body instanceof Response) return body;
-    if (!(await getAccountById(ENV, body.accountId))) return errorResponse(404, "账户未找到");
+    const existing = await getDecryptedAccountById(ENV, body.accountId);
+    if (!existing) return errorResponse(404, "账户未找到");
     if (await accountNameExists(ENV, body.newName, body.accountId)) return errorResponse(409, "新的账户名称已存在");
-    await updateAccountMetadata(ENV, {
+
+    const clientId = body.clientId ?? existing.clientId;
+    const tenantId = body.tenantId ?? existing.tenantId;
+    const subscriptionId = body.subscriptionId ?? existing.subscriptionId;
+    const credentialsChanged = clientId !== existing.clientId
+      || tenantId !== existing.tenantId
+      || subscriptionId !== existing.subscriptionId
+      || Boolean(body.clientSecret);
+
+    await updateAccountCredentials(ENV, {
       accountId: body.accountId,
-      newName: body.newName,
+      name: body.newName,
+      clientId,
+      tenantId,
+      subscriptionId,
+      clientSecret: body.clientSecret ?? null,
       email: body.email ?? null,
       expirationDate: body.expirationDate ?? null,
     });
+
+    if (credentialsChanged) {
+      // Cached Azure data belongs to the previous credentials/subscription.
+      invalidateVmList(body.accountId, "account_credentials_changed");
+      await invalidateAzureAccessToken(existing, "account_credentials_changed");
+    }
+
     let headers: HeadersInit | undefined;
     if (auth.session.selectedAccountId === body.accountId) {
       headers = { "Set-Cookie": await createSelectionCookie(ENV, req, body.accountId) };
     }
-    return jsonResponse({ success: true }, { headers });
+    return jsonResponse({ success: true, credentialsChanged }, { headers });
+  }
+
+  // Quota tier only: one lightweight ARM call, so the insights bar can refresh
+  // just the quota figure without re-pulling VMs or cost.
+  const quotaMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/quota$/)
+    : null;
+  if (quotaMatch) {
+    const accountId = quotaMatch[1];
+    try {
+      const account = await getDecryptedAccountOrThrow(ENV, accountId);
+      const client = new AzureArmClient(ENV, account);
+      const quotaTier = await getQuotaTier(client, account.subscriptionId);
+      await updateAccountInsights(ENV, {
+        accountId,
+        subscriptionName: account.subscriptionName,
+        subscriptionState: account.subscriptionState,
+        quotaTier,
+      });
+      return accountJson(accountId, { quotaTier }, { headers: { "x-account-id": accountId } });
+    } catch (error) {
+      return errorResponse(400, formatAzureError(error), { accountId });
+    }
   }
 
   // account overview (subscription label + vm count) without changing selected session
@@ -542,9 +638,11 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})$/)
     : null;
   if (deleteMatch) {
-    const account = await getAccountById(ENV, deleteMatch[1]);
+    const account = await getDecryptedAccountById(ENV, deleteMatch[1]);
     if (!account) return errorResponse(404, "账户未找到");
     await deleteAccount(ENV, deleteMatch[1]);
+    invalidateVmList(deleteMatch[1], "account_deleted");
+    await invalidateAzureAccessToken(account, "account_deleted");
     const headers: HeadersInit = {};
     if (auth.session.selectedAccountId === deleteMatch[1]) {
       headers["Set-Cookie"] = await createSelectionCookie(ENV, req, null);
@@ -640,11 +738,134 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse(task);
   }
 
-  // routes requiring selected account
+  // ---- account-scoped data routes ----
+  // The account being read is named in the path, never taken from the session
+  // cookie. A stale or reordered POST /api/session therefore cannot change which
+  // account's machines a given request returns.
+  const accountVmsMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/vms$/)
+    : null;
+  if (accountVmsMatch) {
+    const accountId = accountVmsMatch[1];
+    if (!(await getAccountById(ENV, accountId))) return errorResponse(404, "账户未找到");
+    const force = url.searchParams.get("refresh") === "1";
+    try {
+      const snapshot = await getVmList(ENV, accountId, { force });
+      const headers: Record<string, string> = {
+        "x-account-id": accountId,
+        "x-cache": snapshot.stale ? "stale" : snapshot.cached ? "hit" : "miss",
+      };
+      if (snapshot.warning) headers["x-refresh-warning"] = "1";
+      return accountJson(accountId, snapshot.vms, { headers }, {
+        cached: snapshot.cached,
+        stale: snapshot.stale,
+        warning: snapshot.warning,
+        cacheAgeMs: Math.max(0, Date.now() - snapshot.fetchedAt),
+      });
+    } catch (error) {
+      if (isTimeoutError(error)) {
+        return errorResponse(504, "Azure 查询超时，请稍后重试", {
+          accountId,
+          code: "azure_timeout",
+          retryable: true,
+        });
+      }
+      return errorResponse(400, formatAzureError(error), { accountId });
+    }
+  }
+
+  const accountVmActionMatch = req.method === "POST"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/vm-action$/)
+    : null;
+  if (accountVmActionMatch) {
+    const accountId = accountVmActionMatch[1];
+    const account = await getAccountById(ENV, accountId);
+    if (!account) return errorResponse(404, "账户未找到");
+    const body = await parseBody(req, vmActionSchema);
+    if (body instanceof Response) return body;
+    const taskId = crypto.randomUUID();
+    const msg = body.action === "delete"
+      ? `已提交删除资源组 ${body.resourceGroup} 的任务`
+      : `已提交 ${body.vmName} 的 ${body.action} 任务`;
+    await createTask(ENV, { id: taskId, accountId, type: `vm.${body.action}`, lockKey: account.subscriptionId, createdBy: auth.actor, message: msg });
+    startVmLifecycle(ENV, { taskId, accountId, actor: auth.actor, action: body.action, resourceGroup: body.resourceGroup, vmName: body.vmName });
+    return jsonResponse({ accountId, message: msg, taskId });
+  }
+
+  const accountChangeIpMatch = req.method === "POST"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/vm-change-ip$/)
+    : null;
+  if (accountChangeIpMatch) {
+    const accountId = accountChangeIpMatch[1];
+    const account = await getAccountById(ENV, accountId);
+    if (!account) return errorResponse(404, "账户未找到");
+    const body = await parseBody(req, changeIpSchema);
+    if (body instanceof Response) return body;
+    const taskId = crypto.randomUUID();
+    const msg = `已提交 ${body.vmName} 的更换公网 IP 任务`;
+    await createTask(ENV, { id: taskId, accountId, type: "vm.change-ip", lockKey: account.subscriptionId, createdBy: auth.actor, message: msg });
+    startChangeIp(ENV, { taskId, accountId, actor: auth.actor, resourceGroup: body.resourceGroup, vmName: body.vmName });
+    return jsonResponse({ accountId, message: msg, taskId });
+  }
+
+  const accountCreateVmMatch = req.method === "POST"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/create-vm$/)
+    : null;
+  if (accountCreateVmMatch) {
+    const accountId = accountCreateVmMatch[1];
+    const account = await getAccountById(ENV, accountId);
+    if (!account) return errorResponse(404, "账户未找到");
+    const body = await parseBody(req, createVmSchema);
+    if (body instanceof Response) return body;
+    const taskId = crypto.randomUUID();
+    const msg = `已提交 ${body.region} 区域的创建虚拟机任务`;
+    await createTask(ENV, { id: taskId, accountId, type: "vm.create", lockKey: account.subscriptionId, createdBy: auth.actor, message: msg });
+    startCreateVm(ENV, {
+      taskId,
+      accountId,
+      actor: auth.actor,
+      region: body.region,
+      vmSize: body.vmSize,
+      osImage: body.osImage,
+      diskSize: body.diskSize,
+      diskType: body.diskType,
+      ipType: body.ipType,
+      userData: body.userData ?? null,
+      vmName: body.vmName ?? null,
+      adminUsername: body.adminUsername ?? null,
+      adminPassword: body.adminPassword ?? null,
+      useGlobalSsh: body.useGlobalSsh,
+      enableRoot: body.enableRoot,
+      nsgEnabled: body.nsgEnabled,
+      nsgPorts: body.nsgPorts,
+      nsgOpenAllInbound: body.nsgOpenAllInbound,
+      nsgOpenAllOutbound: body.nsgOpenAllOutbound,
+    });
+    return jsonResponse({ accountId, message: msg, taskId });
+  }
+
+  // Legacy account-free routes are gone on purpose: they resolved the account
+  // from the session cookie, which is exactly what allowed one account's data to
+  // be rendered for another. Fail loudly instead of silently answering wrong.
+  if (
+    url.pathname === "/api/vms"
+    || url.pathname === "/api/vm-action"
+    || url.pathname === "/api/vm-change-ip"
+    || url.pathname === "/api/create-vm"
+  ) {
+    return errorResponse(410, "该接口已下线：账户身份现在必须显式出现在请求路径中，请刷新页面以加载最新前端。", {
+      code: "route_gone",
+    });
+  }
+
+  // Remaining session-scoped routes are read-only metadata for the create-VM
+  // dialog. They are scheduled for the same explicit-account treatment; until
+  // then the client guards against applying their answers to another account.
   const selectedId = auth.session.selectedAccountId;
   if (!selectedId) return errorResponse(403, "请先选择一个 Azure 账户");
-  const selectedAccount = await getAccountById(ENV, selectedId);
-  if (!selectedAccount) return errorResponse(404, "当前选择的 Azure 账户不存在");
+  if (!(await getAccountById(ENV, selectedId))) {
+    return errorResponse(404, "当前选择的 Azure 账户不存在");
+  }
 
   if (req.method === "GET" && url.pathname === "/api/regions") {
     const account = await getDecryptedAccountOrThrow(ENV, selectedId);
@@ -673,64 +894,6 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
     }
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vms") {
-    const account = await getDecryptedAccountOrThrow(ENV, selectedId);
-    const client = new AzureArmClient(ENV, account);
-    return jsonResponse(await listVirtualMachines(client, account.subscriptionId));
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/vm-action") {
-    const body = await parseBody(req, vmActionSchema);
-    if (body instanceof Response) return body;
-    const taskId = crypto.randomUUID();
-    const msg = body.action === "delete"
-      ? `已提交删除资源组 ${body.resourceGroup} 的任务`
-      : `已提交 ${body.vmName} 的 ${body.action} 任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: `vm.${body.action}`, lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
-    startVmLifecycle(ENV, { taskId, accountId: selectedId, actor: auth.actor, action: body.action, resourceGroup: body.resourceGroup, vmName: body.vmName });
-    return jsonResponse({ message: msg, taskId });
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/vm-change-ip") {
-    const body = await parseBody(req, changeIpSchema);
-    if (body instanceof Response) return body;
-    const taskId = crypto.randomUUID();
-    const msg = `已提交 ${body.vmName} 的更换公网 IP 任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.change-ip", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
-    startChangeIp(ENV, { taskId, accountId: selectedId, actor: auth.actor, resourceGroup: body.resourceGroup, vmName: body.vmName });
-    return jsonResponse({ message: msg, taskId });
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/create-vm") {
-    const body = await parseBody(req, createVmSchema);
-    if (body instanceof Response) return body;
-    const taskId = crypto.randomUUID();
-    const msg = `已提交 ${body.region} 区域的创建虚拟机任务`;
-    await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.create", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
-    startCreateVm(ENV, {
-      taskId,
-      accountId: selectedId,
-      actor: auth.actor,
-      region: body.region,
-      vmSize: body.vmSize,
-      osImage: body.osImage,
-      diskSize: body.diskSize,
-      diskType: body.diskType,
-      ipType: body.ipType,
-      userData: body.userData ?? null,
-      vmName: body.vmName ?? null,
-      adminUsername: body.adminUsername ?? null,
-      adminPassword: body.adminPassword ?? null,
-      useGlobalSsh: body.useGlobalSsh,
-      enableRoot: body.enableRoot,
-      nsgEnabled: body.nsgEnabled,
-      nsgPorts: body.nsgPorts,
-      nsgOpenAllInbound: body.nsgOpenAllInbound,
-      nsgOpenAllOutbound: body.nsgOpenAllOutbound,
-    });
-    return jsonResponse({ message: msg, taskId });
   }
 
   if (req.method === "GET" && url.pathname === "/api/tasks") {
