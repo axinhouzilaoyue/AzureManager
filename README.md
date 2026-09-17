@@ -37,8 +37,10 @@ docker stop azure-manager && docker rm azure-manager
 ## 功能
 
 - 管理多个 Azure Service Principal 账户
+- 左侧账户列表、右侧账户详情与 VM 工作台
+- 直接查看添加账户时填写的 Client ID、Tenant ID、Subscription ID 和 Client Secret
 - 账户 JSON 导入、导出、搜索、排序和拖动排序
-- 查看订阅成本、累计消费、历史消费和 AI 配额层级
+- 查看订阅成本、累计消费、历史消费和 AI 配额层级，并对无权限状态给出明确提示
 - 查看订阅下的虚拟机列表和系统盘大小
 - 创建、启动、停止、重启虚拟机
 - 更换虚拟机公网 IP，并保留原 IP 的 SKU 和分配模式

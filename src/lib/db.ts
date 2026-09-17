@@ -22,7 +22,7 @@ interface AccountRow {
   display_order: number;
   subscription_name: string | null; subscription_state: string | null; quota_tier: string | null;
   cost_mtd: string | null; cost_acc: string | null; cost_history: string | null;
-  cost_currency: string | null; cost_updated_at: string | null;
+  cost_currency: string | null; cost_updated_at: string | null; cost_warning: string | null;
   created_at: string; updated_at: string;
 }
 interface TaskRow {
@@ -56,6 +56,7 @@ function mapAccountRow(r: AccountRow): AccountRecord {
     costHistory: r.cost_history ?? null,
     costCurrency: r.cost_currency ?? null,
     costUpdatedAt: r.cost_updated_at ?? null,
+    costWarning: r.cost_warning ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -78,6 +79,7 @@ function toSummary(a: AccountRecord): AccountSummary {
     costHistory: a.costHistory,
     costCurrency: a.costCurrency,
     costUpdatedAt: a.costUpdatedAt,
+    costWarning: a.costWarning,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -103,7 +105,7 @@ export function initializeDatabase(db: Database): void {
       client_secret_ciphertext TEXT NOT NULL, email TEXT, expiration_date TEXT,
       display_order INTEGER NOT NULL DEFAULT 0,
       subscription_name TEXT, subscription_state TEXT, quota_tier TEXT,
-      cost_mtd TEXT, cost_acc TEXT, cost_history TEXT, cost_currency TEXT, cost_updated_at TEXT,
+      cost_mtd TEXT, cost_acc TEXT, cost_history TEXT, cost_currency TEXT, cost_updated_at TEXT, cost_warning TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_accounts_subscription_id ON accounts(subscription_id);
@@ -143,6 +145,7 @@ export function initializeDatabase(db: Database): void {
     cost_history: `ALTER TABLE accounts ADD COLUMN cost_history TEXT`,
     cost_currency: `ALTER TABLE accounts ADD COLUMN cost_currency TEXT`,
     cost_updated_at: `ALTER TABLE accounts ADD COLUMN cost_updated_at TEXT`,
+    cost_warning: `ALTER TABLE accounts ADD COLUMN cost_warning TEXT`,
   };
   for (const [column, statement] of Object.entries(migrations)) {
     if (!accountColumnNames.has(column)) db.exec(statement);
@@ -151,7 +154,7 @@ export function initializeDatabase(db: Database): void {
 
 const ACCOUNT_SELECT = `SELECT id, name, client_id, tenant_id, subscription_id, client_secret_ciphertext,
   email, expiration_date, display_order, subscription_name, subscription_state, quota_tier,
-  cost_mtd, cost_acc, cost_history, cost_currency, cost_updated_at,
+  cost_mtd, cost_acc, cost_history, cost_currency, cost_updated_at, cost_warning,
   created_at, updated_at FROM accounts`;
 
 export async function listAccounts(env: AppEnv): Promise<AccountSummary[]> {
@@ -182,6 +185,7 @@ export async function getDecryptedAccountById(env: AppEnv, accountId: string): P
     costHistory: account.costHistory,
     costCurrency: account.costCurrency,
     costUpdatedAt: account.costUpdatedAt,
+    costWarning: account.costWarning,
     createdAt: account.createdAt, updatedAt: account.updatedAt,
   };
 }
@@ -216,6 +220,7 @@ export async function createAccount(env: AppEnv, input: {
     costHistory: null,
     costCurrency: null,
     costUpdatedAt: null,
+    costWarning: null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -254,10 +259,11 @@ export async function updateAccountCost(env: AppEnv, accountId: string, cost: {
   history: string;
   currency: string;
   queriedAt: string;
+  warning: string | null;
 }): Promise<void> {
   env.DB.prepare(
-    `UPDATE accounts SET cost_mtd = ?, cost_acc = ?, cost_history = ?, cost_currency = ?, cost_updated_at = ?, updated_at = ? WHERE id = ?`
-  ).run(cost.mtd, cost.acc, cost.history, cost.currency, cost.queriedAt, nowIso(), accountId);
+    `UPDATE accounts SET cost_mtd = ?, cost_acc = ?, cost_history = ?, cost_currency = ?, cost_updated_at = ?, cost_warning = ?, updated_at = ? WHERE id = ?`
+  ).run(cost.mtd, cost.acc, cost.history, cost.currency, cost.queriedAt, cost.warning, nowIso(), accountId);
 }
 
 export async function updateAccountMetadata(env: AppEnv, input: {

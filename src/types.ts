@@ -51,6 +51,7 @@ export interface AccountRecord {
   costHistory: string | null;
   costCurrency: string | null;
   costUpdatedAt: string | null;
+  costWarning: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +77,7 @@ export interface AccountSummary {
   costHistory: string | null;
   costCurrency: string | null;
   costUpdatedAt: string | null;
+  costWarning: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -102,6 +104,7 @@ export interface AzureCostResult {
   history: string;
   currency: string;
   queriedAt: string;
+  warning: string | null;
 }
 
 export interface GlobalSshSettings {

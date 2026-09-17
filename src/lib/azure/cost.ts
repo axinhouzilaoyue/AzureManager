@@ -14,6 +14,12 @@ interface CostResponse {
   };
 }
 
+interface CostQueryResult {
+  cost: string;
+  currency: string;
+  warning: string | null;
+}
+
 export async function getQuotaTier(
   client: AzureArmClient,
   subscriptionId: string,
@@ -30,11 +36,12 @@ export async function getQuotaTier(
     for (const value of Object.values(properties)) {
       if (typeof value === "string" && /^tier\s*[01]$/i.test(value.trim())) return value.trim();
     }
-    return "未知";
+    return "未识别";
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes(":404:")) return "不支持";
-    return "未知";
+    if (message.includes(":401:") || message.includes(":403:")) return "无权限";
+    return "未获取";
   }
 }
 
@@ -43,6 +50,11 @@ export async function getAzureCosts(
   subscriptionId: string,
   expirationDate: string | null,
 ): Promise<AzureCostResult> {
+  // The reference implementation waits briefly before querying Cost Management
+  // to reduce throttling when called immediately after account connection.
+  await delay(1000);
+
+  const warnings: string[] = [];
   const mtd = await queryCost(client, subscriptionId, {
     type: "Usage",
     timeframe: "MonthToDate",
@@ -53,82 +65,120 @@ export async function getAzureCosts(
       },
     },
   });
+  if (mtd.warning) warnings.push(`本月消费：${mtd.warning}`);
 
-  const today = new Date();
-  const periodStart = resolveHistoryStart(expirationDate, today);
-  const yearly = await queryCost(client, subscriptionId, {
-    type: "Usage",
-    timeframe: "Custom",
-    timePeriod: {
-      from: `${periodStart}T00:00:00Z`,
-      to: `${today.toISOString().slice(0, 10)}T23:59:59Z`,
-    },
-    dataset: {
-      granularity: "None",
-      aggregation: {
-        totalCost: { name: "PreTaxCost", function: "Sum" },
-      },
-    },
-  });
+  let accumulated = mtd.cost;
+  let history = "0.00";
+  let currency = mtd.currency;
 
-  const mtdValue = Number(mtd.cost || 0);
-  const yearlyValue = Math.max(Number(yearly.cost || 0), mtdValue);
-  const historyValue = Math.max(0, yearlyValue - mtdValue);
-  return {
-    mtd: formatCost(mtdValue),
-    acc: formatCost(yearlyValue),
-    history: formatCost(historyValue),
-    currency: yearly.currency || mtd.currency || "",
-    queriedAt: nowIso(),
-  };
-}
+  if (isNumericCost(mtd.cost)) {
+    const periodStart = resolveHistoryStart(expirationDate);
+    const yearly = periodStart
+      ? await queryCost(client, subscriptionId, {
+          type: "Usage",
+          timeframe: "Custom",
+          timePeriod: {
+            from: `${periodStart}T00:00:00Z`,
+            to: `${new Date().toISOString().slice(0, 10)}T23:59:59Z`,
+          },
+          dataset: {
+            granularity: "None",
+            aggregation: {
+              totalCost: { name: "PreTaxCost", function: "Sum" },
+            },
+          },
+        })
+      : { cost: mtd.cost, currency, warning: null };
 
-function resolveHistoryStart(expirationDate: string | null, today: Date): string {
-  if (expirationDate) {
-    const expiration = new Date(`${expirationDate}T00:00:00Z`);
-    if (!Number.isNaN(expiration.getTime())) {
-      const start = new Date(expiration);
-      start.setUTCFullYear(start.getUTCFullYear() - 1);
-      return start.toISOString().slice(0, 10);
+    if (yearly.warning) warnings.push(`累计消费：${yearly.warning}`);
+    if (isNumericCost(yearly.cost)) {
+      const mtdValue = Number(mtd.cost);
+      const yearlyValue = Math.max(Number(yearly.cost), mtdValue);
+      accumulated = formatCost(yearlyValue);
+      history = formatCost(Math.max(0, yearlyValue - mtdValue));
+      currency = yearly.currency || currency;
+    } else if (yearly.cost !== "0.00") {
+      warnings.push("累计消费暂不可用，当前累计值仅展示本月消费");
+      accumulated = mtd.cost;
     }
   }
 
-  const fallback = new Date(today);
-  fallback.setUTCDate(fallback.getUTCDate() - 365);
-  return fallback.toISOString().slice(0, 10);
+  return {
+    mtd: mtd.cost,
+    acc: accumulated,
+    history,
+    currency,
+    queriedAt: nowIso(),
+    warning: warnings.length ? warnings.join("；") : null,
+  };
+}
+
+function resolveHistoryStart(expirationDate: string | null): string | null {
+  if (!expirationDate) return null;
+  const expiration = new Date(`${expirationDate}T00:00:00Z`);
+  if (Number.isNaN(expiration.getTime())) return null;
+
+  const start = new Date(expiration);
+  start.setUTCFullYear(start.getUTCFullYear() - 1);
+  const today = new Date();
+  if (start.getTime() > today.getTime()) {
+    const fallback = new Date(today);
+    fallback.setUTCDate(fallback.getUTCDate() - 365);
+    return fallback.toISOString().slice(0, 10);
+  }
+  return start.toISOString().slice(0, 10);
 }
 
 async function queryCost(
   client: AzureArmClient,
   subscriptionId: string,
   payload: unknown,
-): Promise<{ cost: string; currency: string }> {
+): Promise<CostQueryResult> {
   const path = `/subscriptions/${subscriptionId}/providers/Microsoft.CostManagement/query`;
-  let lastError: Error | null = null;
+  let lastError = "";
 
   for (let attempt = 0; attempt < COST_MAX_ATTEMPTS; attempt += 1) {
-    const response = await client.requestResponse("POST", path, {
-      apiVersion: AZURE_API_VERSIONS.costManagement,
-      body: payload,
-    });
+    try {
+      const response = await client.requestResponse("POST", path, {
+        apiVersion: AZURE_API_VERSIONS.costManagement,
+        body: payload,
+      });
 
-    if (response.ok) {
-      const data = (await response.json()) as CostResponse;
-      return parseCostResponse(data);
+      if (response.ok) {
+        return { ...parseCostResponse((await response.json()) as CostResponse), warning: null };
+      }
+
+      const responseText = await response.text();
+      lastError = `HTTP ${response.status}${responseText ? `: ${responseText.slice(0, 240)}` : ""}`;
+
+      if (response.status === 401 || response.status === 403) {
+        return { cost: "无权限(可能为赞助/学生订阅)", currency: "", warning: "当前服务主体没有 Cost Management 查询权限" };
+      }
+      if (response.status === 400 || response.status === 404) {
+        const normalized = responseText.toLowerCase();
+        if (normalized.includes("not supported")) {
+          return { cost: "赞助订阅请去官网查看", currency: "", warning: null };
+        }
+        return { cost: "未获取", currency: "", warning: `Cost Management 不支持当前查询（HTTP ${response.status}）` };
+      }
+
+      if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
+        return { cost: "未获取", currency: "", warning: `查询失败：${lastError}` };
+      }
+
+      const retryAfter = parseRetryAfterMs(response.headers.get("Retry-After"));
+      const backoff = Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt);
+      await delay(retryAfter ?? backoff);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      if (attempt === COST_MAX_ATTEMPTS - 1) {
+        return { cost: "未获取", currency: "", warning: `网络或服务异常：${lastError}` };
+      }
+      await delay(Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt));
     }
-
-    const responseText = await response.text();
-    lastError = new Error(`azure_cost_query_failed:${response.status}:${responseText}`);
-    if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
-      throw lastError;
-    }
-
-    const retryAfter = parseRetryAfterMs(response.headers.get("Retry-After"));
-    const backoff = Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt);
-    await delay(retryAfter ?? backoff);
   }
 
-  throw lastError ?? new Error("azure_cost_query_failed");
+  return { cost: "未获取", currency: "", warning: lastError || "查询失败" };
 }
 
 function parseCostResponse(data: CostResponse): { cost: string; currency: string } {
@@ -140,13 +190,17 @@ function parseCostResponse(data: CostResponse): { cost: string; currency: string
   const rawCurrency = currencyIndex >= 0 ? row[currencyIndex] : "";
   const numeric = Number(rawCost);
   if (!Number.isFinite(numeric)) {
-    return { cost: "0", currency: rawCurrency ? String(rawCurrency) : "" };
+    return { cost: "0.00", currency: rawCurrency ? String(rawCurrency) : "" };
   }
   return { cost: String(numeric), currency: rawCurrency ? String(rawCurrency) : "" };
 }
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function isNumericCost(value: string): boolean {
+  return Number.isFinite(Number(value));
 }
 
 function parseRetryAfterMs(value: string | null): number | null {

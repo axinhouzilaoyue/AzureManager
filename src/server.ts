@@ -180,6 +180,7 @@ function exportPayload(account: Awaited<ReturnType<typeof getDecryptedAccountByI
     costHistory: account.costHistory,
     costCurrency: account.costCurrency,
     costUpdatedAt: account.costUpdatedAt,
+    costWarning: account.costWarning,
     ...(includeSecrets ? { clientSecret: account.clientSecret } : {}),
   };
 }
@@ -398,6 +399,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         costHistory: null,
         costCurrency: null,
         costUpdatedAt: null,
+        costWarning: null,
         createdAt: "",
         updatedAt: "",
       };
@@ -467,23 +469,34 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       void registerRequiredProviders(client, account.subscriptionId).catch((error) => {
         console.warn("Provider registration skipped", account.id, error);
       });
-      const [sub, vms, quotaTier] = await Promise.all([
+      const [subResult, vmsResult, quotaResult] = await Promise.allSettled([
         getSubscriptionDetails(client, account.subscriptionId),
         listVirtualMachines(client, account.subscriptionId),
         getQuotaTier(client, account.subscriptionId),
       ]);
+      const sub = subResult.status === "fulfilled" ? subResult.value : null;
+      const vms = vmsResult.status === "fulfilled" ? vmsResult.value : [];
+      const quotaTier = quotaResult.status === "fulfilled"
+        ? quotaResult.value
+        : (account.quotaTier ?? "未获取");
       await updateAccountInsights(ENV, {
         accountId: account.id,
-        subscriptionName: sub.displayName,
-        subscriptionState: sub.state,
+        subscriptionName: sub?.displayName ?? account.subscriptionName,
+        subscriptionState: sub?.state ?? account.subscriptionState,
         quotaTier,
       });
       return jsonResponse({
         id: account.id,
-        subscriptionDisplayName: sub.displayName,
-        state: sub.state,
+        subscriptionDisplayName: sub?.displayName ?? account.subscriptionName ?? account.subscriptionId,
+        state: sub?.state ?? account.subscriptionState ?? "Unknown",
         vmCount: vms.length,
         quotaTier,
+        vmError: vmsResult.status === "rejected"
+          ? (vmsResult.reason instanceof Error ? vmsResult.reason.message : String(vmsResult.reason))
+          : null,
+        subscriptionError: subResult.status === "rejected"
+          ? (subResult.reason instanceof Error ? subResult.reason.message : String(subResult.reason))
+          : null,
       });
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
@@ -570,6 +583,15 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse({ success: true });
   }
 
+  const detailMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/detail$/)
+    : null;
+  if (detailMatch) {
+    const account = await getDecryptedAccountById(ENV, detailMatch[1]);
+    if (!account) return errorResponse(404, "账户未找到");
+    return jsonResponse(exportPayload(account, true));
+  }
+
   const costMatch = req.method === "GET"
     ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/cost$/)
     : null;
@@ -594,7 +616,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
           history: account.costHistory,
           currency: account.costCurrency ?? "",
           queriedAt: account.costUpdatedAt,
-          warning: `实时查询失败，已显示缓存：${detail}`,
+          warning: account.costWarning || `实时查询失败，已显示缓存：${detail}`,
         });
       }
       return errorResponse(502, "Azure 成本查询失败", { detail });
