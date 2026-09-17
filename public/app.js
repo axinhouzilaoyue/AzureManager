@@ -11,6 +11,10 @@ const S = {
   trackingTasks: new Set(),
   addVerifiedKey: null, // fingerprint of last successfully verified credentials
   pendingNewAccountId: null,
+  accountSearch: '',
+  accountSort: 'manual',
+  dragAccountId: null,
+  accountInsights: {},
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -94,7 +98,10 @@ function switchPage(page) {
   try {
     if (page === 'overview') refreshOverview();
     if (page === 'accounts') showAccList();
-    if (page === 'settings') loadStartupScript();
+    if (page === 'settings') {
+      loadStartupScript();
+      loadGlobalSshSettings();
+    }
   } catch (err) {
     console.error('[ui] switchPage side effects failed', page, err);
   }
@@ -269,20 +276,53 @@ function accountDisplayName(a) {
   return (a?.email || a?.name || '未命名账户').trim();
 }
 
+function accountCostText(a) {
+  if (a?.costMtd === null || a?.costMtd === undefined || a?.costMtd === '') return '暂未查询';
+  const unit = a.costCurrency ? ` ${a.costCurrency}` : '';
+  return `本月 ${a.costMtd}${unit}`;
+}
+
+function visibleAccounts() {
+  const q = S.accountSearch.trim().toLowerCase();
+  let rows = S.accounts.filter((a) => {
+    if (!q) return true;
+    return [a.name, a.email, a.subscriptionId, a.subscriptionName]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(q));
+  });
+
+  if (S.accountSort === 'nameAsc' || S.accountSort === 'nameDesc') {
+    rows = [...rows].sort((a, b) => accountDisplayName(a).localeCompare(accountDisplayName(b), 'zh-CN'));
+    if (S.accountSort === 'nameDesc') rows.reverse();
+  } else if (S.accountSort === 'expiryAsc' || S.accountSort === 'expiryDesc') {
+    const ts = (a) => a.expirationDate ? new Date(`${a.expirationDate}T00:00:00`).getTime() : Number.NaN;
+    const dated = rows.filter((item) => Number.isFinite(ts(item)));
+    const undated = rows.filter((item) => !Number.isFinite(ts(item)));
+    dated.sort((a, b) => ts(a) - ts(b) || accountDisplayName(a).localeCompare(accountDisplayName(b), 'zh-CN'));
+    if (S.accountSort === 'expiryDesc') dated.reverse();
+    rows = [...dated, ...undated];
+  }
+  return rows;
+}
+
 function accountCardHtml(a) {
   const st = S.accountStats[a.id] || {};
   const vmText = st.loading ? '加载中…'
     : (typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.error ? '获取失败' : '-'));
-  const subName = st.subscriptionDisplayName || 'Azure 订阅';
-  const state = st.state ? String(st.state) : '';
+  const subName = st.subscriptionDisplayName || a.subscriptionName || 'Azure 订阅';
+  const state = st.state ? String(st.state) : (a.subscriptionState || '');
+  const quota = st.quotaTier || a.quotaTier || '未获取';
   const expCls = expiryStatClass(a.expirationDate);
   const title = accountDisplayName(a);
   return `
-    <div class="acc-card" onclick='openVmView(${jsq(a.id)})'>
+    <div class="acc-card" data-account-id="${esc(a.id)}" onclick='openVmView(${jsq(a.id)})'>
       <div class="acc-top">
-        <div style="min-width:0">
-          <div class="acc-name" title="${esc(title)}">${esc(title)}</div>
-          <div class="acc-sub" title="${esc(subName)}">${esc(subName)}${state ? ` · ${esc(state)}` : ''}</div>
+        <div style="min-width:0;display:flex;gap:9px;align-items:flex-start">
+          <span class="acc-drag" draggable="true" title="拖动调整顺序">⠿</span>
+          <div style="min-width:0">
+            <div class="acc-name" title="${esc(title)}">${esc(title)}</div>
+            <div class="acc-sub" title="${esc(subName)}">${esc(subName)}${state ? ` · ${esc(state)}` : ''}</div>
+          </div>
         </div>
         ${expiryBadge(a.expirationDate)}
       </div>
@@ -292,8 +332,12 @@ function accountCardHtml(a) {
           <div class="acc-stat-v">${esc(vmText)}</div>
         </div>
         <div class="acc-stat">
-          <div class="acc-stat-k">订阅状态</div>
-          <div class="acc-stat-v">${esc(state || '-')}</div>
+          <div class="acc-stat-k">AI 配额层级</div>
+          <div class="acc-stat-v">${esc(quota)}</div>
+        </div>
+        <div class="acc-stat" style="grid-column:1/-1">
+          <div class="acc-stat-k">消费</div>
+          <div class="acc-stat-v">${esc(accountCostText(a))}</div>
         </div>
         <div class="acc-stat" style="grid-column:1/-1">
           <div class="acc-stat-k">订阅到期</div>
@@ -325,12 +369,17 @@ function paintAccGrid() {
       </div>`;
     return;
   }
-  g.innerHTML = S.accounts.map(accountCardHtml).join('');
+  const rows = visibleAccounts();
+  if (!rows.length) {
+    g.innerHTML = `<div class="empty" style="grid-column:1/-1"><h3>没有匹配的账户</h3><p>请调整搜索关键字。</p></div>`;
+    return;
+  }
+  g.innerHTML = rows.map(accountCardHtml).join('');
 }
 
 function renderAccGrid() {
   paintAccGrid();
-  S.accounts.forEach(a => loadAccountStats(a.id));
+  visibleAccounts().forEach(a => loadAccountStats(a.id));
 }
 
 async function loadAccountStats(accountId, { force = false } = {}) {
@@ -348,7 +397,14 @@ async function loadAccountStats(accountId, { force = false } = {}) {
       vmCount: d.vmCount ?? 0,
       subscriptionDisplayName: d.subscriptionDisplayName || '',
       state: d.state || '',
+      quotaTier: d.quotaTier || '',
     };
+    const account = S.accounts.find((item) => item.id === accountId);
+    if (account) {
+      account.subscriptionName = d.subscriptionDisplayName || account.subscriptionName;
+      account.subscriptionState = d.state || account.subscriptionState;
+      account.quotaTier = d.quotaTier || account.quotaTier;
+    }
   } catch (e) {
     S.accountStats[accountId] = {
       loading: false,
@@ -356,11 +412,169 @@ async function loadAccountStats(accountId, { force = false } = {}) {
       vmCount: prev?.vmCount,
       subscriptionDisplayName: prev?.subscriptionDisplayName,
       state: prev?.state,
+      quotaTier: prev?.quotaTier,
     };
   }
   if (S.activePage === 'accounts' && !$('view-acc-list')?.classList.contains('hidden')) {
     paintAccGrid();
   }
+}
+
+function updateAccountSortLabels() {
+  const nameBtn = $('btn-sort-account-name');
+  const expiryBtn = $('btn-sort-account-expiry');
+  if (nameBtn) nameBtn.textContent = S.accountSort === 'nameAsc' ? '名称 ↑' : S.accountSort === 'nameDesc' ? '名称 ↓' : '名称排序';
+  if (expiryBtn) expiryBtn.textContent = S.accountSort === 'expiryAsc' ? '到期 ↑' : S.accountSort === 'expiryDesc' ? '到期 ↓' : '到期排序';
+}
+
+function cycleAccountSort(kind) {
+  const nameStates = ['manual', 'nameAsc', 'nameDesc'];
+  const expiryStates = ['manual', 'expiryAsc', 'expiryDesc'];
+  const states = kind === 'name' ? nameStates : expiryStates;
+  const currentIndex = states.indexOf(S.accountSort);
+  S.accountSort = states[(currentIndex + 1 + states.length) % states.length];
+  updateAccountSortLabels();
+  renderAccGrid();
+}
+
+async function importAccountsFromFile(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const result = await api('POST', '/api/accounts/import', { data });
+    S.accounts = await api('GET', '/api/accounts');
+    renderAccGrid();
+    refreshOverview();
+    const skipped = Array.isArray(result.skipped) && result.skipped.length
+      ? `，跳过 ${result.skipped.length} 个：${result.skipped.map((item) => `${item.name}(${item.reason})`).join('；')}`
+      : '';
+    toast(`已导入 ${result.imported?.length || 0} 个账户${skipped}`, result.skipped?.length ? 'info' : 'success');
+  } catch (e) {
+    toast(`账号导入失败: ${e.message}`, 'error');
+  } finally {
+    const input = $('account-import-file');
+    if (input) input.value = '';
+  }
+}
+
+async function exportAccounts(includeSecrets = false) {
+  try {
+    const response = await fetch(`/api/accounts/export?includeSecrets=${includeSecrets ? 'true' : 'false'}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || '导出失败');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `azure-accounts-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    closeModal('mo-export-accounts');
+    toast(includeSecrets ? '已导出完整账号配置' : '已导出脱敏账号配置', 'success');
+  } catch (e) {
+    toast(`账号导出失败: ${e.message}`, 'error');
+  }
+}
+
+function handleAccountDrop(targetId) {
+  const draggedId = S.dragAccountId;
+  S.dragAccountId = null;
+  if (!draggedId || !targetId || draggedId === targetId) return;
+  const rows = [...S.accounts];
+  const from = rows.findIndex((item) => item.id === draggedId);
+  const to = rows.findIndex((item) => item.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [moved] = rows.splice(from, 1);
+  rows.splice(to, 0, moved);
+  S.accounts = rows;
+  S.accountSort = 'manual';
+  updateAccountSortLabels();
+  paintAccGrid();
+  api('POST', '/api/accounts/reorder', { accountIds: rows.map((item) => item.id) })
+    .then(() => toast('账户顺序已保存', 'success'))
+    .catch((e) => toast(`账户排序保存失败: ${e.message}`, 'error'));
+}
+
+function renderAccountInsights(accountId) {
+  const host = $('account-insights');
+  if (!host) return;
+  const account = S.accounts.find((item) => item.id === accountId);
+  const data = S.accountInsights[accountId] || {};
+  const loading = data.loading ? '查询中…' : '';
+  const currency = data.currency || account?.costCurrency || '';
+  const unit = currency ? ` ${currency}` : '';
+  const mtd = data.mtd ?? account?.costMtd;
+  const acc = data.acc ?? account?.costAcc;
+  const history = data.history ?? account?.costHistory;
+  const quota = data.quotaTier || account?.quotaTier || '未获取';
+  const warning = data.warning ? `<div class="small muted" style="margin-top:4px">${esc(data.warning)}</div>` : '';
+  const costText = mtd !== null && mtd !== undefined && mtd !== ''
+    ? `本月 ${mtd}${unit}`
+    : (loading || '未获取');
+  const accText = acc !== null && acc !== undefined && acc !== ''
+    ? `${acc}${unit}`
+    : '未获取';
+  const historyText = history !== null && history !== undefined && history !== ''
+    ? `${history}${unit}`
+    : '未获取';
+  host.innerHTML = `
+    <div class="acc-stat"><div class="acc-stat-k">AI 配额层级</div><div class="acc-stat-v">${esc(quota)}</div></div>
+    <div class="acc-stat"><div class="acc-stat-k">本月消费</div><div class="acc-stat-v">${esc(costText)}</div>${warning}</div>
+    <div class="acc-stat"><div class="acc-stat-k">近一年累计</div><div class="acc-stat-v">${esc(accText)}</div></div>
+    <div class="acc-stat"><div class="acc-stat-k">历史消费</div><div class="acc-stat-v">${esc(historyText)}</div><div><button class="btn btn-s btn-sm" style="margin-top:8px" id="btn-refresh-cost">刷新消费</button></div></div>`;
+}
+
+async function loadAccountInsights(accountId, force = false) {
+  if (!accountId) return;
+  const previous = S.accountInsights[accountId] || {};
+  if (previous.loading) return;
+  if (!force && previous.loaded) return;
+  const account = S.accounts.find((item) => item.id === accountId);
+  const updatedAt = account?.costUpdatedAt ? new Date(account.costUpdatedAt).getTime() : 0;
+  if (!force && updatedAt && Date.now() - updatedAt < 10 * 60 * 1000) {
+    S.accountInsights[accountId] = {
+      ...previous,
+      mtd: account?.costMtd,
+      acc: account?.costAcc,
+      history: account?.costHistory,
+      currency: account?.costCurrency,
+      loaded: true,
+      loading: false,
+      warning: '当前显示 10 分钟内的缓存数据',
+    };
+    renderAccountInsights(accountId);
+    return;
+  }
+  S.accountInsights[accountId] = { ...previous, loading: true, warning: '' };
+  renderAccountInsights(accountId);
+  try {
+    const data = await api('GET', `/api/accounts/${accountId}/cost`);
+    S.accountInsights[accountId] = { ...data, loading: false, loaded: true };
+    const account = S.accounts.find((item) => item.id === accountId);
+    if (account) {
+      account.costMtd = data.mtd;
+      account.costAcc = data.acc;
+      account.costHistory = data.history;
+      account.costCurrency = data.currency;
+      account.costUpdatedAt = data.queriedAt;
+    }
+    if (data.warning) toast(data.warning, 'info');
+  } catch (e) {
+    S.accountInsights[accountId] = { ...previous, loading: false, warning: e.message };
+    toast(`消费查询失败: ${e.message}`, 'error');
+  }
+  renderAccountInsights(accountId);
+  paintAccGrid();
+}
+
+async function refreshAccountCost(accountId) {
+  if (!accountId) return;
+  await loadAccountInsights(accountId, true);
 }
 
 async function openVmView(accId, e) {
@@ -393,8 +607,9 @@ async function openVmView(accId, e) {
   S.activePage = 'accounts';
 
   await api('POST', '/api/session', { accountId: accId }).catch(() => {});
+  renderAccountInsights(accId);
   refreshOverview();
-  await Promise.all([loadVms(), loadRegions()]);
+  await Promise.all([loadVms(), loadRegions(), loadAccountInsights(accId)]);
 }
 window.openVmView = openVmView;
 
@@ -440,7 +655,7 @@ function formatUptime(vm) {
 function renderVms() {
   const tb = $('vm-tbody');
   if (!S.vms.length) {
-    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
+    tb.innerHTML = `<tr><td colspan="7" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
         <h3>此订阅下暂无虚拟机</h3>
         <p>点击右上角「创建虚拟机」开始。</p>
@@ -474,7 +689,8 @@ function renderVms() {
         <div>${esc(uptime.text)}</div>
         ${uptime.sub ? `<div class="vm-sub">${esc(uptime.sub)}</div>` : ''}
       </td>
-      <td class="mono">${esc(vm.publicIp || '-')}</td>
+      <td>${vm.diskSizeGb ? esc(`${vm.diskSizeGb} GB`) : '-'}</td>
+      <td class="mono">${esc(vm.publicIp || '-')}${vm.ipAllocationMethod === 'Dynamic' ? '<div class="vm-sub">动态</div>' : ''}</td>
       <td>
         <div class="ops">
           <button class="btn btn-s btn-sm" onclick='vmAction("start", ${rgArg}, ${vmArg})'>启动</button>
@@ -506,6 +722,7 @@ function renderVmSizeOptions(sizes, preferred = 'Standard_B1s') {
   const preferredOrder = [
     'Standard_B1s',
     'Standard_B2ats_v2',
+    'Standard_B2pts_v2',
     'Standard_B1ms',
     'Standard_B2s',
     'Standard_B2ms',
@@ -563,6 +780,7 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
     renderVmSizeOptions([
       { name: 'Standard_B1s', numberOfCores: 1, memoryInMB: 1024, maxDataDiskCount: 2, freeTierHint: true },
       { name: 'Standard_B2ats_v2', numberOfCores: 2, memoryInMB: 1024, maxDataDiskCount: 4, freeTierHint: true },
+      { name: 'Standard_B2pts_v2', numberOfCores: 2, memoryInMB: 1024, maxDataDiskCount: 4, freeTierHint: true },
       { name: 'Standard_B1ms', numberOfCores: 1, memoryInMB: 2048, maxDataDiskCount: 2, freeTierHint: false },
       { name: 'Standard_B2s', numberOfCores: 2, memoryInMB: 4096, maxDataDiskCount: 4, freeTierHint: false },
       { name: 'Standard_B2ms', numberOfCores: 2, memoryInMB: 8192, maxDataDiskCount: 4, freeTierHint: false },
@@ -584,9 +802,44 @@ async function loadRegions() {
       `<option value="${esc(r.name)}">${esc(r.displayName)}</option>`
     ).join('');
     if (S.regions[0]?.name) {
-      await loadVmSizes(S.regions[0].name);
+      await Promise.all([
+        loadVmSizes(S.regions[0].name),
+        loadIpPermission(S.regions[0].name),
+      ]);
     }
   } catch { /* non-critical */ }
+}
+
+async function loadIpPermission(location) {
+  const sel = $('create-ip');
+  const hint = $('create-ip-hint');
+  if (!sel || !location) return;
+  sel.disabled = true;
+  try {
+    const data = await api('GET', `/api/ip-permission?location=${encodeURIComponent(location)}`);
+    const permission = data.permission || 'Both';
+    sel.innerHTML = '';
+    if (permission === 'Dynamic') {
+      sel.add(new Option('Dynamic', 'Dynamic'));
+      sel.value = 'Dynamic';
+      sel.disabled = true;
+      if (hint) hint.textContent = '当前区域仅支持 Basic / Dynamic 公网 IP。';
+    } else if (permission === 'Static') {
+      sel.add(new Option('Static', 'Static'));
+      sel.value = 'Static';
+      sel.disabled = true;
+      if (hint) hint.textContent = '当前区域仅支持 Standard / Static 公网 IP。';
+    } else {
+      sel.add(new Option('Dynamic', 'Dynamic'));
+      sel.add(new Option('Static', 'Static'));
+      sel.value = 'Dynamic';
+      sel.disabled = false;
+      if (hint) hint.textContent = '当前区域同时支持 Dynamic 和 Static。';
+    }
+  } catch (e) {
+    sel.disabled = false;
+    if (hint) hint.textContent = `IP 类型检测失败，保留手动选择：${e.message}`;
+  }
 }
 
 // ── VM actions ────────────────────────────────────────────────
@@ -768,13 +1021,38 @@ async function submitCreateVm() {
   if (btn) btn.disabled = true;
   try {
     const ud = $('create-ud').value.trim();
+    const diskSize = parseInt($('create-disk').value, 10);
+    const diskType = $('create-disk-type').value;
+    if (diskSize === 30 && diskType === 'Premium_LRS') {
+      throw new Error('30 GB 不支持 Premium SSD，请选择 32 GB 或更换磁盘类型');
+    }
+    const ports = String($('create-nsg-ports')?.value || '22')
+      .split(/[,\s]+/)
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 1 && value <= 65535);
+    if (ports.length > 20) throw new Error('最多配置 20 个开放端口');
+    const openAllInbound = $('create-nsg-all-inbound').checked;
+    const openAllOutbound = $('create-nsg-all-outbound').checked;
+    if ((openAllInbound || openAllOutbound) && !confirm('确认开放全部入站或出站流量？这会显著扩大实例的网络暴露面。')) {
+      return;
+    }
     const task = await api('POST', '/api/create-vm', {
       region: $('create-region').value,
       vmSize: $('create-size').value,
       osImage: $('create-os').value,
-      diskSize: parseInt($('create-disk').value, 10),
+      diskSize,
+      diskType,
       ipType: $('create-ip').value,
       userData: ud || null,
+      vmName: $('create-name').value.trim() || null,
+      adminUsername: $('create-username').value.trim() || null,
+      adminPassword: $('create-password').value || null,
+      useGlobalSsh: $('create-use-global-ssh').checked,
+      enableRoot: $('create-enable-root').checked,
+      nsgEnabled: $('create-nsg-enabled').checked,
+      nsgPorts: ports.length ? [...new Set(ports)] : [],
+      nsgOpenAllInbound: openAllInbound,
+      nsgOpenAllOutbound: openAllOutbound,
     });
     closeModal('mo-create-vm');
     toast('创建任务已提交', 'success');
@@ -983,8 +1261,11 @@ async function checkAddAccount() {
     S.addVerifiedKey = currentAddCredentialKey();
     setAddSaveEnabled(true);
     if (res) {
-      res.className = 'ok-box';
-      res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域`;
+      const warningText = Array.isArray(d.warnings) && d.warnings.length
+        ? `；Provider 注册警告：${d.warnings.join('；')}`
+        : '';
+      res.className = d.warnings?.length ? 'err-box' : 'ok-box';
+      res.textContent = `验证通过：${d.subscriptionDisplayName} · ${d.state} · ${d.availableRegionCount} 个可用区域${warningText}`;
     }
   } catch (e) {
     S.addVerifiedKey = null;
@@ -1204,6 +1485,36 @@ async function saveStartupScript() {
   }
 }
 
+async function loadGlobalSshSettings() {
+  try {
+    const d = await api('GET', '/api/settings/global-ssh');
+    if ($('global-ssh-public-key')) $('global-ssh-public-key').value = d.publicKey || '';
+    if ($('global-ssh-username')) $('global-ssh-username').value = d.username || '';
+    if ($('global-ssh-password')) {
+      $('global-ssh-password').value = '';
+      $('global-ssh-password').placeholder = d.passwordSet ? '已保存密码；留空保持不变' : '未设置密码';
+    }
+  } catch { /* ignore */ }
+}
+
+async function saveGlobalSshSettings() {
+  const btn = $('btn-save-global-ssh');
+  if (btn) btn.disabled = true;
+  try {
+    await api('POST', '/api/settings/global-ssh', {
+      publicKey: $('global-ssh-public-key').value.trim(),
+      username: $('global-ssh-username').value.trim(),
+      password: $('global-ssh-password').value,
+    });
+    toast('全局 SSH 配置已保存', 'success');
+    await loadGlobalSshSettings();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── auth ──────────────────────────────────────────────────────
 async function doLogout() {
   await api('POST', '/auth/logout').catch(() => {});
@@ -1303,12 +1614,25 @@ function bindUI() {
     }
     if (t.closest('#btn-back-accounts')) return void backToAccountList();
     if (t.closest('#btn-create-vm')) {
-      // Restore recommended defaults each time the dialog opens.
+      // Restore safe defaults each time the dialog opens.
+      if ($('create-name')) $('create-name').value = '';
+      if ($('create-username')) $('create-username').value = '';
+      if ($('create-password')) $('create-password').value = '';
       if ($('create-disk')) $('create-disk').value = '64';
+      if ($('create-disk-type')) $('create-disk-type').value = 'Premium_LRS';
       if ($('create-ip')) $('create-ip').value = 'Dynamic';
+      if ($('create-use-global-ssh')) $('create-use-global-ssh').checked = false;
+      if ($('create-enable-root')) $('create-enable-root').checked = false;
+      if ($('create-nsg-enabled')) $('create-nsg-enabled').checked = true;
+      if ($('create-nsg-ports')) $('create-nsg-ports').value = '22';
+      if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = false;
+      if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = false;
       openModal('mo-create-vm');
       const loc = $('create-region')?.value || S.regions[0]?.name || '';
-      if (loc) loadVmSizes(loc, 'Standard_B1s');
+      if (loc) {
+        loadVmSizes(loc, 'Standard_B1s');
+        loadIpPermission(loc);
+      }
       return;
     }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
@@ -1321,6 +1645,14 @@ function bindUI() {
     if (t.closest('#btn-save-edit-acc')) return void saveEditAccount();
     if (t.closest('#btn-del-acc')) return void deleteSelectedAccount();
     if (t.closest('#btn-save-script')) return void saveStartupScript();
+    if (t.closest('#btn-save-global-ssh')) return void saveGlobalSshSettings();
+    if (t.closest('#btn-refresh-cost')) return void refreshAccountCost(S.selectedAccId);
+    if (t.closest('#btn-import-accounts')) return void $('account-import-file')?.click();
+    if (t.closest('#btn-export-accounts')) return void openModal('mo-export-accounts');
+    if (t.closest('#btn-export-accounts-safe')) return void exportAccounts(false);
+    if (t.closest('#btn-export-accounts-full')) return void exportAccounts(true);
+    if (t.closest('#btn-sort-account-name')) return void cycleAccountSort('name');
+    if (t.closest('#btn-sort-account-expiry')) return void cycleAccountSort('expiry');
     if (t.closest('#btn-cf')) return void confirmPendingAction();
     if (t.closest('#btn-save-expiry')) return void savePostAddExpiry();
   });
@@ -1333,7 +1665,44 @@ function bindUI() {
   on('create-region', 'change', (e) => {
     const loc = e.target?.value || '';
     loadVmSizes(loc, 'Standard_B1s');
+    loadIpPermission(loc);
   });
+
+  on('account-search', 'input', (e) => {
+    S.accountSearch = e.target?.value || '';
+    renderAccGrid();
+  });
+  on('account-import-file', 'change', (e) => {
+    importAccountsFromFile(e.target?.files?.[0]);
+  });
+
+  const accGrid = $('acc-grid');
+  if (accGrid) {
+    accGrid.addEventListener('dragstart', (e) => {
+      const handle = e.target instanceof Element ? e.target.closest('.acc-drag') : null;
+      const card = handle?.closest('.acc-card');
+      if (!card) {
+        e.preventDefault();
+        return;
+      }
+      S.dragAccountId = card.getAttribute('data-account-id');
+      card.classList.add('dragging');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    accGrid.addEventListener('dragover', (e) => {
+      if (S.dragAccountId && e.target instanceof Element && e.target.closest('.acc-card')) e.preventDefault();
+    });
+    accGrid.addEventListener('drop', (e) => {
+      const card = e.target instanceof Element ? e.target.closest('.acc-card') : null;
+      if (!card) return;
+      e.preventDefault();
+      handleAccountDrop(card.getAttribute('data-account-id'));
+    });
+    accGrid.addEventListener('dragend', () => {
+      S.dragAccountId = null;
+      accGrid.querySelectorAll('.acc-card.dragging').forEach((card) => card.classList.remove('dragging'));
+    });
+  }
 
   // Invalidate verification when credentials change.
   ['add-cid', 'add-sec', 'add-tid', 'add-sid', 'add-json'].forEach((id) => {

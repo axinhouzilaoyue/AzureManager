@@ -28,11 +28,17 @@ export interface AzurePublicIpAddress {
   id: string;
   name: string;
   location: string;
+  sku?: {
+    name?: string;
+  };
   properties?: {
     ipAddress?: string;
     publicIPAllocationMethod?: string;
   };
 }
+
+export type AzureIpPermission = "Both" | "Static" | "Dynamic";
+export type AzurePublicIpSku = "Basic" | "Standard";
 
 export interface AzureVirtualNetwork {
   id: string;
@@ -133,6 +139,117 @@ export async function getPublicIpAddress(
   );
 }
 
+export async function getIpPermission(
+  client: AzureArmClient,
+  subscriptionId: string,
+  location: string,
+): Promise<AzureIpPermission> {
+  try {
+    const response = await client.request<{ value?: Array<{
+      name?: { value?: string };
+      currentValue?: number;
+      limit?: number;
+    }> }>(
+      "GET",
+      `/subscriptions/${subscriptionId}/providers/Microsoft.Network/locations/${encodeURIComponent(location)}/usages`,
+      { apiVersion: AZURE_API_VERSIONS.network },
+    );
+    let hasBasic = false;
+    let hasStandard = false;
+    for (const usage of response.value ?? []) {
+      const name = String(usage.name?.value ?? "").toLowerCase();
+      if (!name.includes("public ip") && !name.includes("publicip")) continue;
+      if (usage.limit === 0) continue;
+      if (name.includes("basic")) hasBasic = true;
+      if (name.includes("standard")) hasStandard = true;
+    }
+    if (hasBasic && !hasStandard) return "Dynamic";
+    if (hasStandard && !hasBasic) return "Static";
+    return "Both";
+  } catch {
+    return "Both";
+  }
+}
+
+export async function createNetworkSecurityGroup(
+  client: AzureArmClient,
+  subscriptionId: string,
+  resourceGroup: string,
+  nsgName: string,
+  location: string,
+  options: {
+    ports: number[];
+    openAllInbound: boolean;
+    openAllOutbound: boolean;
+  },
+): Promise<string> {
+  const rules: Array<Record<string, unknown>> = [];
+  [...new Set(options.ports)].sort((a, b) => a - b).forEach((port, index) => {
+    rules.push({
+      name: `AllowTcp-${port}`,
+      properties: {
+        protocol: "Tcp",
+        sourceAddressPrefix: "*",
+        sourcePortRange: "*",
+        destinationAddressPrefix: "*",
+        destinationPortRange: String(port),
+        access: "Allow",
+        direction: "Inbound",
+        priority: 1000 + index,
+      },
+    });
+  });
+  if (options.openAllInbound) {
+    rules.push({
+      name: "AllowAll-Inbound",
+      properties: {
+        protocol: "*",
+        sourceAddressPrefix: "*",
+        sourcePortRange: "*",
+        destinationAddressPrefix: "*",
+        destinationPortRange: "*",
+        access: "Allow",
+        direction: "Inbound",
+        priority: 2000,
+      },
+    });
+  }
+  if (options.openAllOutbound) {
+    rules.push({
+      name: "AllowAll-Outbound",
+      properties: {
+        protocol: "*",
+        sourceAddressPrefix: "*",
+        sourcePortRange: "*",
+        destinationAddressPrefix: "*",
+        destinationPortRange: "*",
+        access: "Allow",
+        direction: "Outbound",
+        priority: 1000,
+      },
+    });
+  }
+
+  await client.executeLongRunningOperation(
+    "PUT",
+    `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Network/networkSecurityGroups/${nsgName}`,
+    {
+      apiVersion: AZURE_API_VERSIONS.network,
+      body: {
+        location,
+        properties: { securityRules: rules },
+      },
+    },
+  );
+
+  const response = await client.request<{ id: string }>(
+    "GET",
+    `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Network/networkSecurityGroups/${nsgName}`,
+    { apiVersion: AZURE_API_VERSIONS.network },
+  );
+  return response.id;
+}
+
 export async function createPublicIpAddress(
   client: AzureArmClient,
   subscriptionId: string,
@@ -140,6 +257,7 @@ export async function createPublicIpAddress(
   publicIpName: string,
   location: string,
   ipType: "Static" | "Dynamic",
+  skuName?: AzurePublicIpSku,
 ): Promise<AzurePublicIpAddress> {
   await client.executeLongRunningOperation(
     "PUT",
@@ -149,7 +267,7 @@ export async function createPublicIpAddress(
       body: {
         location,
         sku: {
-          name: ipType === "Dynamic" ? "Basic" : "Standard",
+          name: skuName ?? (ipType === "Dynamic" ? "Basic" : "Standard"),
         },
         properties: {
           publicIPAllocationMethod: ipType,

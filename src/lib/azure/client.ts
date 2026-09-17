@@ -105,6 +105,20 @@ export class AzureArmClient {
     throw new Error(`azure_arm_request_failed:${response.status}:${errorText}`);
   }
 
+  async requestResponse(
+    method: HttpMethod,
+    pathOrUrl: string,
+    options: {
+      apiVersion?: string;
+      body?: unknown;
+    } = {},
+  ): Promise<Response> {
+    return this.authorizedFetch(this.createUrl(pathOrUrl, options.apiVersion), {
+      method,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  }
+
   async paginate<T>(path: string, apiVersion: string): Promise<T[]> {
     const results: T[] = [];
     let nextUrl: string | null = this.createUrl(path, apiVersion);

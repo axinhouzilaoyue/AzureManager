@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Azure Manager</title>
+  <link rel="icon" href="data:," />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -347,6 +348,20 @@
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
     .acc-foot-note { font-size: 12px; color: var(--text-3); }
+    .acc-toolbar {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px;
+    }
+    .acc-toolbar .fi { width: auto; min-width: 220px; flex: 1 1 260px; }
+    .acc-card.dragging { opacity: 0.5; transform: none; }
+    .acc-drag { cursor: grab; color: var(--text-3); font-size: 16px; line-height: 1; }
+    .acc-drag:active { cursor: grabbing; }
+    .insight-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px;
+    }
+    @media (max-width: 900px) { .insight-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .insight-grid { grid-template-columns: 1fr; } }
+    .check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; }
+    .check-row input { margin-top: 3px; }
 
     .empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -606,7 +621,7 @@
             <span class="ni-ico">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             </span>
-            <span class="ni-title">开机脚本</span>
+            <span class="ni-title">设置</span>
           </button>
         </div>
 
@@ -680,6 +695,14 @@
               </button>
             </div>
           </div>
+          <div class="acc-toolbar">
+            <input class="fi" id="account-search" placeholder="搜索账户名称、邮箱或 Subscription ID" />
+            <button class="btn btn-s btn-sm" type="button" id="btn-sort-account-name">名称排序</button>
+            <button class="btn btn-s btn-sm" type="button" id="btn-sort-account-expiry">到期排序</button>
+            <button class="btn btn-s btn-sm" type="button" id="btn-import-accounts">导入 JSON</button>
+            <button class="btn btn-s btn-sm" type="button" id="btn-export-accounts">导出 JSON</button>
+            <input class="hidden" type="file" id="account-import-file" accept="application/json,.json" />
+          </div>
           <div id="acc-grid" class="acc-grid"></div>
         </div>
 
@@ -700,6 +723,8 @@
             </div>
           </div>
 
+          <div id="account-insights" class="insight-grid"></div>
+
           <div class="tabs">
             <div class="tab active" data-vtab="vms">虚拟机</div>
             <div class="tab" data-vtab="tasks">任务</div>
@@ -714,6 +739,7 @@
                     <th>区域 / 规格</th>
                     <th>状态</th>
                     <th>开机</th>
+                    <th>系统盘</th>
                     <th>公网 IP</th>
                     <th>操作</th>
                   </tr>
@@ -732,16 +758,37 @@
       <section class="page hidden" id="pg-settings">
         <div class="page-head">
           <div>
-            <div class="page-title">开机脚本</div>
-            <div class="page-sub">创建 VM 时默认注入的 cloud-init / bash 脚本</div>
+            <div class="page-title">设置</div>
+            <div class="page-sub">全局开机脚本与创建 VM 时可选复用的 SSH 配置</div>
           </div>
         </div>
-        <div class="card" style="max-width:760px">
+        <div class="card" style="max-width:820px">
           <div class="card-h"><span class="card-t">全局默认脚本</span></div>
           <div class="card-b" style="display:flex;flex-direction:column;gap:12px">
-            <textarea class="fi mono" id="startup-script" rows="16" spellcheck="false"></textarea>
+            <textarea class="fi mono" id="startup-script" rows="14" spellcheck="false"></textarea>
             <div class="fhint">创建虚拟机时可单独覆盖。留空创建时将使用这里的全局默认值。</div>
             <div><button class="btn btn-p" type="button" id="btn-save-script">保存脚本</button></div>
+          </div>
+        </div>
+        <div class="card" style="max-width:820px;margin-top:14px">
+          <div class="card-h"><span class="card-t">全局 SSH 配置</span></div>
+          <div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+            <div class="fg">
+              <label class="fl" for="global-ssh-public-key"><span class="fl-title">SSH 公钥</span></label>
+              <textarea class="fi mono" id="global-ssh-public-key" rows="4" placeholder="ssh-ed25519 AAAA..."></textarea>
+            </div>
+            <div class="frow">
+              <div class="fg">
+                <label class="fl" for="global-ssh-username"><span class="fl-title">默认用户名</span></label>
+                <input class="fi" id="global-ssh-username" placeholder="azureuser" autocomplete="off" />
+              </div>
+              <div class="fg">
+                <label class="fl" for="global-ssh-password"><span class="fl-title">默认密码</span></label>
+                <input class="fi" type="password" id="global-ssh-password" placeholder="不会回显已保存密码" autocomplete="new-password" />
+              </div>
+            </div>
+            <div class="fhint">密码会加密保存且不会回显。留空表示保持已有密码不变。</div>
+            <div><button class="btn btn-p" type="button" id="btn-save-global-ssh">保存 SSH 配置</button></div>
           </div>
         </div>
       </section>
@@ -990,7 +1037,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
 
 <!-- Modal: 创建 VM -->
 <div id="mo-create-vm" class="mo hidden">
-  <div class="md md-lg">
+  <div class="md md-xl">
     <div class="md-h">
       <span class="md-ttl">创建虚拟机</span>
       <button class="md-x" data-close="mo-create-vm" type="button">×</button>
@@ -998,45 +1045,97 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
     <div class="md-b">
       <div class="frow">
         <div class="fg">
-          <label class="fl" for="create-region"><span class="fl-title">区域</span></label>
-          <select class="fi" id="create-region"><option value="">加载中...</option></select>
+          <label class="fl" for="create-name"><span class="fl-title">虚拟机名称</span><span class="fl-azure">可选</span></label>
+          <input class="fi" id="create-name" placeholder="留空自动生成，例如 vm-eastus-123456" />
         </div>
         <div class="fg">
-          <label class="fl" for="create-size"><span class="fl-title">实例规格</span></label>
-          <select class="fi" id="create-size">
-            <option value="">选择区域后加载…</option>
-          </select>
-          <div class="fhint" id="create-size-hint">根据所选区域实时查询 Azure 可用规格。标「免费试用」的为常见免费额度规格，实际以订阅为准。</div>
+          <label class="fl" for="create-region"><span class="fl-title">区域</span></label>
+          <select class="fi" id="create-region"><option value="">加载中...</option></select>
         </div>
       </div>
       <div class="frow">
         <div class="fg">
-          <label class="fl" for="create-os"><span class="fl-title">操作系统</span></label>
-          <select class="fi" id="create-os">
-            <option value="debian12">Debian 12</option>
-            <option value="debian11">Debian 11</option>
-            <option value="ubuntu22">Ubuntu 22.04 LTS</option>
-            <option value="ubuntu20">Ubuntu 20.04 LTS</option>
-          </select>
+          <label class="fl" for="create-size"><span class="fl-title">实例规格</span></label>
+          <select class="fi" id="create-size"><option value="">选择区域后加载…</option></select>
+          <div class="fhint" id="create-size-hint">优先显示当前区域可用的免费规格；也可以选择其他规格。</div>
         </div>
         <div class="fg">
-          <label class="fl" for="create-disk"><span class="fl-title">磁盘 (GB)</span></label>
-          <input class="fi" type="number" id="create-disk" value="64" min="64" max="1024" step="1" />
-          <div class="fhint">默认 64 GB Premium SSD（P6）。</div>
+          <label class="fl" for="create-os"><span class="fl-title">操作系统</span></label>
+          <select class="fi" id="create-os">
+            <option value="ubuntu24">Ubuntu 24.04 LTS</option>
+            <option value="ubuntu22">Ubuntu 22.04 LTS</option>
+            <option value="ubuntu20">Ubuntu 20.04 LTS</option>
+            <option value="debian12">Debian 12</option>
+            <option value="debian11">Debian 11</option>
+            <option value="centos8">CentOS 8</option>
+          </select>
+          <div class="fhint">ARM64 VM 会自动选择 ARM64 镜像；CentOS 8 当前仅提供 x86_64 镜像。</div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fg">
+          <label class="fl" for="create-disk"><span class="fl-title">系统盘大小 (GB)</span></label>
+          <input class="fi" type="number" id="create-disk" value="64" list="create-disk-options" min="30" max="2048" step="1" />
+          <datalist id="create-disk-options">
+            <option value="30"></option><option value="32"></option><option value="64"></option>
+            <option value="128"></option><option value="256"></option><option value="512"></option>
+            <option value="1024"></option><option value="2048"></option>
+          </datalist>
+          <div class="fhint">支持 30、32、64、128、256、512、1024、2048 GB。</div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="create-disk-type"><span class="fl-title">系统盘类型</span></label>
+          <select class="fi" id="create-disk-type">
+            <option value="Premium_LRS">Premium SSD</option>
+            <option value="StandardSSD_LRS">Standard SSD</option>
+            <option value="Standard_LRS">Standard HDD</option>
+          </select>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fg">
+          <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
+          <select class="fi" id="create-ip">
+            <option value="Dynamic" selected>Dynamic</option>
+            <option value="Static">Static</option>
+          </select>
+          <div class="fhint" id="create-ip-hint">会根据当前区域支持情况自动限制。</div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="create-username"><span class="fl-title">管理员用户名</span></label>
+          <input class="fi" id="create-username" placeholder="留空使用 azureuser" autocomplete="off" />
         </div>
       </div>
       <div class="fg">
-        <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
-        <select class="fi" id="create-ip" style="max-width:240px">
-          <option value="Dynamic" selected>动态 Dynamic（默认）</option>
-          <option value="Static">静态 Static</option>
-        </select>
+        <label class="fl" for="create-password"><span class="fl-title">管理员密码</span><span class="fl-azure">留空自动生成</span></label>
+        <input class="fi" type="password" id="create-password" placeholder="12～72 字符" autocomplete="new-password" />
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="create-use-global-ssh" />
+        <label for="create-use-global-ssh">使用设置页中的全局 SSH 公钥和登录信息</label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="create-enable-root" />
+        <label for="create-enable-root">创建后启用 root SSH 登录<span class="muted small">（会增加安全风险，仅在明确需要时开启）</span></label>
       </div>
       <div class="fg">
-        <label class="fl" for="create-ud">
-          <span class="fl-title">开机脚本</span>
-          <span class="fl-azure">留空则使用全局默认</span>
-        </label>
+        <label class="fl"><span class="fl-title">网络安全组</span></label>
+        <div class="check-row"><input type="checkbox" id="create-nsg-enabled" checked /><label for="create-nsg-enabled">自动创建并绑定 NSG</label></div>
+        <div class="frow">
+          <div class="fg">
+            <label class="fl" for="create-nsg-ports"><span class="fl-title">开放 TCP 端口</span></label>
+            <input class="fi" id="create-nsg-ports" value="22" placeholder="例如 22,80,443" />
+          </div>
+          <div class="fg">
+            <label class="fl"><span class="fl-title">全部放行</span></label>
+            <div class="check-row"><input type="checkbox" id="create-nsg-all-inbound" /><label for="create-nsg-all-inbound">全部入站</label></div>
+            <div class="check-row"><input type="checkbox" id="create-nsg-all-outbound" /><label for="create-nsg-all-outbound">全部出站</label></div>
+          </div>
+        </div>
+        <div class="fhint">默认仅开放你填写的端口。全部入站/出站必须显式勾选。</div>
+      </div>
+      <div class="fg">
+        <label class="fl" for="create-ud"><span class="fl-title">开机脚本</span><span class="fl-azure">留空则使用全局默认</span></label>
         <textarea class="fi mono" id="create-ud" rows="5" placeholder="#!/bin/bash&#10;..."></textarea>
       </div>
     </div>
@@ -1081,6 +1180,24 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
+<!-- Modal: 导出账户 -->
+<div id="mo-export-accounts" class="mo hidden">
+  <div class="md md-sm">
+    <div class="md-h">
+      <span class="md-ttl">导出账户配置</span>
+      <button class="md-x" data-close="mo-export-accounts" type="button">×</button>
+    </div>
+    <div class="md-b">
+      <p class="muted" style="font-size:13px;line-height:1.7">脱敏导出不包含 Client Secret；完整导出包含敏感凭据，请只在可信位置保存。</p>
+    </div>
+    <div class="md-f">
+      <button class="btn btn-g" type="button" data-close="mo-export-accounts">取消</button>
+      <button class="btn btn-s" type="button" id="btn-export-accounts-safe">导出脱敏</button>
+      <button class="btn btn-dg" type="button" id="btn-export-accounts-full">导出含密钥</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: 编辑账户 -->
 <div id="mo-edit-acc" class="mo hidden">
   <div class="md">
@@ -1108,6 +1225,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
   </div>
 </div>
 
-<script src="/app.js?v=20260730i"></script>
+<script src="/app.js?v=20260917a"></script>
 </body>
 </html>

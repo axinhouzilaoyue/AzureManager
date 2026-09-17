@@ -2,6 +2,7 @@ import type { AppEnv, ChangeIpParams, CreateVmParams, VmLifecycleParams } from "
 import {
   appendTaskLog,
   getDecryptedAccountOrThrow,
+  getGlobalSshSettings,
   getGlobalStartupScript,
   markTaskFailure,
   markTaskRunning,
@@ -12,12 +13,14 @@ import { AzureArmClient } from "./azure/client";
 import { createVirtualMachine, getVirtualMachine, startVmAction } from "./azure/compute";
 import {
   buildNetworkInterfacePayload,
+  createNetworkSecurityGroup,
   createOrUpdateNetworkInterface,
   createPublicIpAddress,
   createVirtualNetwork,
   deletePublicIpAddress,
   getNetworkInterface,
   getPublicIpAddress,
+  type AzurePublicIpSku,
 } from "./azure/network";
 import { createOrUpdateResourceGroup, deleteResourceGroup } from "./azure/resource";
 import { delay } from "./utils";
@@ -25,11 +28,15 @@ import { delay } from "./utils";
 function generateAdminPassword(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
   const bytes = crypto.getRandomValues(new Uint8Array(20));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  return `${Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("")}A1a!`;
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "image_arm64_not_supported:centos8") {
+    return "CentOS 8 当前没有可用的 ARM64 镜像，请改用 Ubuntu、Debian 或选择 x86_64 规格";
+  }
+  return message;
 }
 
 async function failTask(env: AppEnv, taskId: string, message: string, error: unknown): Promise<void> {
@@ -40,6 +47,42 @@ async function failTask(env: AppEnv, taskId: string, message: string, error: unk
   } catch (logError) {
     console.error("Failed to mark task failure", taskId, logError);
   }
+}
+
+function buildProvisioningScript(
+  input: string,
+  options: {
+    enableRoot: boolean;
+    adminUsername: string;
+    adminPassword: string;
+    sshPublicKey: string | null;
+  },
+): string {
+  let script = input.trim();
+  if (!script) script = "#!/bin/bash";
+  if (!script.startsWith("#!")) script = `#!/bin/bash\n${script}`;
+
+  if (options.enableRoot) {
+    script += `\n\n# Enable root SSH login\n`;
+    script += `mkdir -p /root/.ssh\n`;
+    if (options.sshPublicKey) {
+      script += `printf '%s\n' '${escapeShellSingleQuotes(options.sshPublicKey)}' > /root/.ssh/authorized_keys\n`;
+    } else {
+      script += `if [ -f /home/${options.adminUsername}/.ssh/authorized_keys ]; then cp /home/${options.adminUsername}/.ssh/authorized_keys /root/.ssh/authorized_keys; fi\n`;
+    }
+    script += `chmod 700 /root/.ssh\n`;
+    script += `chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true\n`;
+    script += `echo 'root:${escapeShellSingleQuotes(options.adminPassword)}' | chpasswd\n`;
+    script += `sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config\n`;
+    script += `sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config\n`;
+    script += `systemctl restart sshd || systemctl restart ssh || true\n`;
+  }
+
+  return script;
+}
+
+function escapeShellSingleQuotes(value: string): string {
+  return value.replace(/'/g, `'\\''`);
 }
 
 export function startCreateVm(env: AppEnv, params: CreateVmParams): void {
@@ -88,15 +131,24 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
     client = new AzureArmClient(env, account);
     subscriptionId = account.subscriptionId;
     subscriptionLockKey = account.subscriptionId;
-    const adminPassword = generateAdminPassword();
     const timestamp = Date.now();
     const slugRegion = params.region.replace(/\s+/g, "").toLowerCase();
-    const vmName = `vm-${slugRegion}-${timestamp}`;
-    resourceGroup = `vm-${slugRegion}-${timestamp}`;
+    const vmName = params.vmName?.trim() || `vm-${slugRegion}-${timestamp}`;
+    resourceGroup = `rg-${vmName}-${timestamp}`;
     const ttl = env.LOCK_TIMEOUT_SECONDS;
-    const userData = params.userData?.trim()
-      ? params.userData
-      : await getGlobalStartupScript(env);
+    const globalSsh = params.useGlobalSsh ? await getGlobalSshSettings(env) : null;
+    const requestedUsername = params.adminUsername?.trim() || globalSsh?.username?.trim() || "azureuser";
+    const targetUsername = requestedUsername.toLowerCase() === "root" ? "root" : requestedUsername;
+    const adminUsername = targetUsername === "root" ? "azureuser" : targetUsername;
+    const adminPassword = params.adminPassword?.trim() || globalSsh?.password || generateAdminPassword();
+    const sshPublicKey = params.useGlobalSsh ? globalSsh?.publicKey?.trim() || null : null;
+    const rawUserData = params.userData?.trim() ? params.userData : await getGlobalStartupScript(env);
+    const userData = buildProvisioningScript(rawUserData, {
+      enableRoot: params.enableRoot || targetUsername === "root",
+      adminUsername,
+      adminPassword,
+      sshPublicKey,
+    });
 
     await acquireSubscriptionLock({
       lockKey: subscriptionLockKey,
@@ -127,6 +179,34 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
     );
     await appendTaskLog(env, params.taskId, { step: "public-ip", message: `公网 IP 资源 pip-${vmName} 已创建` });
 
+    let networkSecurityGroupId: string | undefined;
+    if (params.nsgEnabled) {
+      const nsgName = `nsg-${vmName}`;
+      networkSecurityGroupId = await createNetworkSecurityGroup(
+        client,
+        account.subscriptionId,
+        resourceGroup,
+        nsgName,
+        params.region,
+        {
+          ports: params.nsgPorts,
+          openAllInbound: params.nsgOpenAllInbound,
+          openAllOutbound: params.nsgOpenAllOutbound,
+        },
+      );
+      await appendTaskLog(env, params.taskId, {
+        step: "network-security",
+        message: `网络安全组 ${nsgName} 已创建`,
+      });
+      if (params.nsgOpenAllInbound || params.nsgOpenAllOutbound) {
+        await appendTaskLog(env, params.taskId, {
+          step: "network-security",
+          message: "已按用户选择开放全部入站或出站流量，请确认安全策略。",
+          level: "warn",
+        });
+      }
+    }
+
     const nicName = `nic-${vmName}`;
     await createOrUpdateNetworkInterface(client, account.subscriptionId, resourceGroup, nicName, {
       location: params.region,
@@ -135,6 +215,9 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
           name: "ipconfig1",
           properties: { subnet: { id: subnetId }, publicIPAddress: { id: publicIp.id } },
         }],
+        ...(networkSecurityGroupId
+          ? { networkSecurityGroup: { id: networkSecurityGroupId } }
+          : {}),
       },
     });
     await appendTaskLog(env, params.taskId, { step: "network", message: `网卡 ${nicName} 已创建` });
@@ -143,10 +226,13 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
     await createVirtualMachine(client, account.subscriptionId, resourceGroup, vmName, {
       location: params.region,
       vmSize: params.vmSize,
-      osImage: params.osImage as "debian12" | "debian11" | "ubuntu22" | "ubuntu20",
+      osImage: params.osImage,
       diskSizeGb: params.diskSize,
+      diskType: params.diskType,
       networkInterfaceId: nicId,
+      adminUsername,
       adminPassword,
+      sshPublicKey,
       userData,
     });
     await appendTaskLog(env, params.taskId, {
@@ -159,7 +245,7 @@ async function runCreateVm(env: AppEnv, params: CreateVmParams): Promise<void> {
       vmName,
       resourceGroup,
       publicIp: finalIp,
-      username: "azureuser",
+      username: targetUsername,
       password: adminPassword,
     });
   } catch (error) {
@@ -257,6 +343,8 @@ async function runChangeIp(env: AppEnv, params: ChangeIpParams): Promise<void> {
 
     const nic = await getNetworkInterface(client, account.subscriptionId, params.resourceGroup, nicName);
     const oldIpId = nic.properties.ipConfigurations?.[0]?.properties?.publicIPAddress?.id ?? null;
+    let oldIpType: "Static" | "Dynamic" = "Static";
+    let oldIpSku: AzurePublicIpSku = "Standard";
 
     if (oldIpId) {
       await createOrUpdateNetworkInterface(
@@ -271,6 +359,13 @@ async function runChangeIp(env: AppEnv, params: ChangeIpParams): Promise<void> {
         message: `已从网卡 ${nicName} 卸载旧公网 IP`,
       });
       const oldIpName = oldIpId.split("/").at(-1)!;
+      try {
+        const oldIp = await getPublicIpAddress(client, account.subscriptionId, params.resourceGroup, oldIpName);
+        oldIpType = oldIp.properties?.publicIPAllocationMethod === "Dynamic" ? "Dynamic" : "Static";
+        oldIpSku = oldIp.sku?.name === "Basic" ? "Basic" : "Standard";
+      } catch {
+        // Keep safe Standard/Static defaults when the old resource cannot be read.
+      }
       await deletePublicIpAddress(client, account.subscriptionId, params.resourceGroup, oldIpName);
       await appendTaskLog(env, params.taskId, {
         step: "public-ip",
@@ -285,7 +380,8 @@ async function runChangeIp(env: AppEnv, params: ChangeIpParams): Promise<void> {
       params.resourceGroup,
       newIpName,
       vm.location,
-      "Static",
+      oldIpType,
+      oldIpSku,
     );
     await appendTaskLog(env, params.taskId, {
       step: "public-ip",

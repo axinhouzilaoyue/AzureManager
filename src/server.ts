@@ -9,27 +9,38 @@ import {
   createTask,
   deleteAccount,
   getAccountById,
+  getDecryptedAccountById,
   getDecryptedAccountOrThrow,
+  getGlobalSshSettings,
   getGlobalStartupScript,
   getTaskResponse,
   listTasksForAccount,
   initializeDatabase,
   listAccounts,
+  reorderAccounts,
+  setGlobalSshSettings,
   setGlobalStartupScript,
+  updateAccountCost,
+  updateAccountInsights,
   updateAccountMetadata,
 } from "./lib/db";
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
 import { listVirtualMachines, listVmSizes } from "./lib/azure/compute";
-import { getSubscriptionDetails, listSubscriptionLocations } from "./lib/azure/subscription";
+import { getAzureCosts, getQuotaTier } from "./lib/azure/cost";
+import { getIpPermission } from "./lib/azure/network";
+import { getSubscriptionDetails, listSubscriptionLocations, registerRequiredProviders } from "./lib/azure/subscription";
 import {
   accountCheckSchema,
   changeIpSchema,
   createAccountSchema,
   createVmSchema,
   editAccountSchema,
+  importAccountsSchema,
   loginSchema,
+  reorderAccountsSchema,
   selectAccountSchema,
+  updateGlobalSshSchema,
   updateStartupScriptSchema,
   vmActionSchema,
 } from "./lib/validation";
@@ -106,6 +117,73 @@ function formatAzureError(error: unknown): string {
   return "Azure 检查失败，请确认订阅 ID、租户、服务主体权限以及当前目录是否正确。";
 }
 
+function pickString(source: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function normalizeImportedAccounts(raw: unknown): Array<{
+  name: string;
+  clientId: string;
+  clientSecret: string;
+  tenantId: string;
+  subscriptionId: string;
+  email: string | null;
+  expirationDate: string | null;
+}> {
+  let source: unknown = raw;
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    const object = source as Record<string, unknown>;
+    if (object.profiles && typeof object.profiles === "object") source = object.profiles;
+    if (object.accounts && typeof object.accounts === "object") source = object.accounts;
+  }
+
+  const rows: Array<Record<string, unknown>> = [];
+  if (Array.isArray(source)) {
+    rows.push(...source.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object"));
+  } else if (source && typeof source === "object") {
+    rows.push(...Object.entries(source).map(([name, value]) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return { name };
+      return { name, ...(value as Record<string, unknown>) };
+    }));
+  }
+
+  return rows.map((row) => ({
+    name: pickString(row, ["name", "alias", "displayName", "display_name"]),
+    clientId: pickString(row, ["clientId", "client_id", "appId", "app_id", "applicationId"]),
+    clientSecret: pickString(row, ["clientSecret", "client_secret", "password", "secret"]),
+    tenantId: pickString(row, ["tenantId", "tenant_id", "tenant", "directoryId"]),
+    subscriptionId: pickString(row, ["subscriptionId", "subscription_id", "subId", "sub_id"]),
+    email: pickString(row, ["email"]) || null,
+    expirationDate: pickString(row, ["expirationDate", "expiration_date"]) || null,
+  }));
+}
+
+function exportPayload(account: Awaited<ReturnType<typeof getDecryptedAccountById>>, includeSecrets: boolean) {
+  if (!account) return null;
+  return {
+    name: account.name,
+    clientId: account.clientId,
+    tenantId: account.tenantId,
+    subscriptionId: account.subscriptionId,
+    email: account.email,
+    expirationDate: account.expirationDate,
+    displayOrder: account.displayOrder,
+    subscriptionName: account.subscriptionName,
+    subscriptionState: account.subscriptionState,
+    quotaTier: account.quotaTier,
+    costMtd: account.costMtd,
+    costAcc: account.costAcc,
+    costHistory: account.costHistory,
+    costCurrency: account.costCurrency,
+    costUpdatedAt: account.costUpdatedAt,
+    ...(includeSecrets ? { clientSecret: account.clientSecret } : {}),
+  };
+}
+
 // ---- server ----
 const server = Bun.serve({
   port: parseInt(process.env.PORT ?? "8080"),
@@ -119,6 +197,9 @@ const server = Bun.serve({
     }
     if (url.pathname === "/app.js") {
       return serveFile("public/app.js", "application/javascript");
+    }
+    if (url.pathname === "/favicon.ico") {
+      return new Response(null, { status: 204 });
     }
 
     try {
@@ -191,6 +272,65 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse(await listAccounts(ENV));
   }
 
+  if (req.method === "GET" && url.pathname === "/api/accounts/export") {
+    const includeSecrets = url.searchParams.get("includeSecrets") === "true";
+    const accounts = await listAccounts(ENV);
+    const exported = await Promise.all(accounts.map(async (account) => {
+      const decrypted = await getDecryptedAccountById(ENV, account.id);
+      return exportPayload(decrypted, includeSecrets);
+    }));
+    const body = JSON.stringify({
+      exportedAt: new Date().toISOString(),
+      includeSecrets,
+      accounts: exported.filter(Boolean),
+    }, null, 2);
+    return new Response(body, {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="azure-accounts-${new Date().toISOString().slice(0, 10)}.json"`,
+        "cache-control": "no-store",
+      },
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts/import") {
+    const body = await parseBody(req, importAccountsSchema);
+    if (body instanceof Response) return body;
+    const normalized = normalizeImportedAccounts(body.data);
+    const imported: string[] = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
+    for (const item of normalized) {
+      const parsed = createAccountSchema.safeParse(item);
+      if (!parsed.success) {
+        skipped.push({ name: item.name || "未命名账户", reason: parsed.error.issues[0]?.message ?? "数据无效" });
+        continue;
+      }
+      if (await accountNameExists(ENV, parsed.data.name)) {
+        skipped.push({ name: parsed.data.name, reason: "账户名称已存在" });
+        continue;
+      }
+      await createAccount(ENV, {
+        id: crypto.randomUUID(),
+        name: parsed.data.name,
+        clientId: parsed.data.clientId,
+        clientSecret: parsed.data.clientSecret,
+        tenantId: parsed.data.tenantId,
+        subscriptionId: parsed.data.subscriptionId,
+        email: parsed.data.email ?? null,
+        expirationDate: parsed.data.expirationDate ?? null,
+      });
+      imported.push(parsed.data.name);
+    }
+    return jsonResponse({ imported, skipped });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts/reorder") {
+    const body = await parseBody(req, reorderAccountsSchema);
+    if (body instanceof Response) return body;
+    await reorderAccounts(ENV, body.accountIds);
+    return jsonResponse({ success: true });
+  }
+
   // cross-account VM fleet for overview page
   if (req.method === "GET" && url.pathname === "/api/overview/vms") {
     const accounts = await listAccounts(ENV);
@@ -209,6 +349,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
             location: vm.location,
             vmSize: vm.vmSize,
             publicIp: vm.publicIp,
+            ipAllocationMethod: vm.ipAllocationMethod,
+            diskSizeGb: vm.diskSizeGb,
             uptimeDays: vm.uptimeDays,
             timeCreated: vm.timeCreated,
             resourceGroup: vm.resourceGroup,
@@ -247,13 +389,31 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         subscriptionId: body.subscriptionId,
         email: null,
         expirationDate: null,
+        displayOrder: 0,
+        subscriptionName: null,
+        subscriptionState: null,
+        quotaTier: null,
+        costMtd: null,
+        costAcc: null,
+        costHistory: null,
+        costCurrency: null,
+        costUpdatedAt: null,
         createdAt: "",
         updatedAt: "",
       };
       const client = new AzureArmClient(ENV, tempAccount);
       const sub = await getSubscriptionDetails(client, body.subscriptionId);
-      const regions = await listSubscriptionLocations(client, body.subscriptionId);
-      return jsonResponse({ subscriptionDisplayName: sub.displayName, state: sub.state, availableRegionCount: regions.length, warnings: [], checkedAt: new Date().toISOString() });
+      const [regions, providerWarnings] = await Promise.all([
+        listSubscriptionLocations(client, body.subscriptionId),
+        registerRequiredProviders(client, body.subscriptionId),
+      ]);
+      return jsonResponse({
+        subscriptionDisplayName: sub.displayName,
+        state: sub.state,
+        availableRegionCount: regions.length,
+        warnings: providerWarnings,
+        checkedAt: new Date().toISOString(),
+      });
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
     }
@@ -304,15 +464,26 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     try {
       const account = await getDecryptedAccountOrThrow(ENV, overviewMatch[1]);
       const client = new AzureArmClient(ENV, account);
-      const [sub, vms] = await Promise.all([
+      void registerRequiredProviders(client, account.subscriptionId).catch((error) => {
+        console.warn("Provider registration skipped", account.id, error);
+      });
+      const [sub, vms, quotaTier] = await Promise.all([
         getSubscriptionDetails(client, account.subscriptionId),
         listVirtualMachines(client, account.subscriptionId),
+        getQuotaTier(client, account.subscriptionId),
       ]);
+      await updateAccountInsights(ENV, {
+        accountId: account.id,
+        subscriptionName: sub.displayName,
+        subscriptionState: sub.state,
+        quotaTier,
+      });
       return jsonResponse({
         id: account.id,
         subscriptionDisplayName: sub.displayName,
         state: sub.state,
         vmCount: vms.length,
+        quotaTier,
       });
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
@@ -328,8 +499,25 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       const account = await getDecryptedAccountOrThrow(ENV, checkMatch[1]);
       const client = new AzureArmClient(ENV, account);
       const sub = await getSubscriptionDetails(client, account.subscriptionId);
-      const regions = await listSubscriptionLocations(client, account.subscriptionId);
-      return jsonResponse({ subscriptionDisplayName: sub.displayName, state: sub.state, availableRegionCount: regions.length, warnings: [], checkedAt: new Date().toISOString() });
+      const [regions, quotaTier, providerWarnings] = await Promise.all([
+        listSubscriptionLocations(client, account.subscriptionId),
+        getQuotaTier(client, account.subscriptionId),
+        registerRequiredProviders(client, account.subscriptionId),
+      ]);
+      await updateAccountInsights(ENV, {
+        accountId: account.id,
+        subscriptionName: sub.displayName,
+        subscriptionState: sub.state,
+        quotaTier,
+      });
+      return jsonResponse({
+        subscriptionDisplayName: sub.displayName,
+        state: sub.state,
+        availableRegionCount: regions.length,
+        warnings: providerWarnings,
+        quotaTier,
+        checkedAt: new Date().toISOString(),
+      });
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
     }
@@ -361,6 +549,58 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     return jsonResponse({ success: true, userData: body.userData });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/settings/global-ssh") {
+    const settings = await getGlobalSshSettings(ENV);
+    return jsonResponse({
+      publicKey: settings.publicKey,
+      username: settings.username,
+      passwordSet: Boolean(settings.password),
+      updatedAt: settings.updatedAt,
+    });
+  }
+  if (req.method === "POST" && url.pathname === "/api/settings/global-ssh") {
+    const body = await parseBody(req, updateGlobalSshSchema);
+    if (body instanceof Response) return body;
+    await setGlobalSshSettings(ENV, {
+      publicKey: body.publicKey,
+      username: body.username,
+      password: body.password,
+      updatedBy: auth.actor,
+    });
+    return jsonResponse({ success: true });
+  }
+
+  const costMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/cost$/)
+    : null;
+  if (costMatch) {
+    const accountId = costMatch[1];
+    const account = await getDecryptedAccountOrThrow(ENV, accountId).catch(() => null);
+    if (!account) return errorResponse(404, "账户未找到");
+    const client = new AzureArmClient(ENV, account);
+    try {
+      const cost = await getAzureCosts(client, account.subscriptionId, account.expirationDate);
+      await updateAccountCost(ENV, accountId, cost);
+      return jsonResponse({ success: true, cached: false, ...cost });
+    } catch (error) {
+      const cached = account.costMtd !== null;
+      const detail = error instanceof Error ? error.message : String(error);
+      if (cached) {
+        return jsonResponse({
+          success: true,
+          cached: true,
+          mtd: account.costMtd,
+          acc: account.costAcc,
+          history: account.costHistory,
+          currency: account.costCurrency ?? "",
+          queriedAt: account.costUpdatedAt,
+          warning: `实时查询失败，已显示缓存：${detail}`,
+        });
+      }
+      return errorResponse(502, "Azure 成本查询失败", { detail });
+    }
+  }
+
   // task status only needs login (so background polling survives account deselection)
   const taskMatch = req.method === "GET"
     ? url.pathname.match(/^\/api\/task_status\/([0-9a-fA-F-]{36})$/)
@@ -382,6 +622,14 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const client = new AzureArmClient(ENV, account);
     const regions = await listSubscriptionLocations(client, account.subscriptionId);
     return jsonResponse(regions.sort((a, b) => a.displayName.localeCompare(b.displayName)));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/ip-permission") {
+    const location = (url.searchParams.get("location") || "").trim();
+    if (!location) return errorResponse(400, "请提供 location 参数");
+    const account = await getDecryptedAccountOrThrow(ENV, selectedId);
+    const client = new AzureArmClient(ENV, account);
+    return jsonResponse({ location, permission: await getIpPermission(client, account.subscriptionId, location) });
   }
 
   // VM sizes available in a specific region (live from Azure)
@@ -432,7 +680,27 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     const taskId = crypto.randomUUID();
     const msg = `已提交 ${body.region} 区域的创建虚拟机任务`;
     await createTask(ENV, { id: taskId, accountId: selectedId, type: "vm.create", lockKey: selectedAccount.subscriptionId, createdBy: auth.actor, message: msg });
-    startCreateVm(ENV, { taskId, accountId: selectedId, actor: auth.actor, region: body.region, vmSize: body.vmSize, osImage: body.osImage, diskSize: body.diskSize, ipType: body.ipType, userData: body.userData ?? null });
+    startCreateVm(ENV, {
+      taskId,
+      accountId: selectedId,
+      actor: auth.actor,
+      region: body.region,
+      vmSize: body.vmSize,
+      osImage: body.osImage,
+      diskSize: body.diskSize,
+      diskType: body.diskType,
+      ipType: body.ipType,
+      userData: body.userData ?? null,
+      vmName: body.vmName ?? null,
+      adminUsername: body.adminUsername ?? null,
+      adminPassword: body.adminPassword ?? null,
+      useGlobalSsh: body.useGlobalSsh,
+      enableRoot: body.enableRoot,
+      nsgEnabled: body.nsgEnabled,
+      nsgPorts: body.nsgPorts,
+      nsgOpenAllInbound: body.nsgOpenAllInbound,
+      nsgOpenAllOutbound: body.nsgOpenAllOutbound,
+    });
     return jsonResponse({ message: msg, taskId });
   }
 

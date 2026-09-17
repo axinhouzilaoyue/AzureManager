@@ -6,6 +6,8 @@ export type TaskStatus = "queued" | "running" | "success" | "failure";
 
 export type VmAction = "start" | "stop" | "restart" | "delete";
 
+export type AzureOsImage = "debian12" | "debian11" | "ubuntu24" | "ubuntu22" | "ubuntu20" | "centos8";
+export type AzureDiskType = "Premium_LRS" | "StandardSSD_LRS" | "Standard_LRS";
 
 export interface AppEnv {
   APP_NAME: string;
@@ -40,6 +42,15 @@ export interface AccountRecord {
   clientSecretCiphertext: string;
   email: string | null;
   expirationDate: string | null;
+  displayOrder: number;
+  subscriptionName: string | null;
+  subscriptionState: string | null;
+  quotaTier: string | null;
+  costMtd: string | null;
+  costAcc: string | null;
+  costHistory: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +67,15 @@ export interface AccountSummary {
   subscriptionId: string;
   email: string | null;
   expirationDate: string | null;
+  displayOrder: number;
+  subscriptionName: string | null;
+  subscriptionState: string | null;
+  quotaTier: string | null;
+  costMtd: string | null;
+  costAcc: string | null;
+  costHistory: string | null;
+  costCurrency: string | null;
+  costUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +85,7 @@ export interface AccountOverview {
   subscriptionDisplayName: string;
   state: string;
   vmCount: number;
+  quotaTier: string | null;
 }
 
 export interface AccountCheckResult {
@@ -73,6 +94,21 @@ export interface AccountCheckResult {
   availableRegionCount: number;
   warnings: string[];
   checkedAt: string;
+}
+
+export interface AzureCostResult {
+  mtd: string;
+  acc: string;
+  history: string;
+  currency: string;
+  queriedAt: string;
+}
+
+export interface GlobalSshSettings {
+  publicKey: string;
+  username: string;
+  password: string;
+  updatedAt: string | null;
 }
 
 export interface TaskRecord {
@@ -126,10 +162,20 @@ export interface CreateVmParams {
   actor: string;
   region: string;
   vmSize: string;
-  osImage: string;
+  osImage: AzureOsImage;
   diskSize: number;
-  ipType: string;
+  diskType: AzureDiskType;
+  ipType: "Static" | "Dynamic";
   userData: string | null;
+  vmName: string | null;
+  adminUsername: string | null;
+  adminPassword: string | null;
+  useGlobalSsh: boolean;
+  enableRoot: boolean;
+  nsgEnabled: boolean;
+  nsgPorts: number[];
+  nsgOpenAllInbound: boolean;
+  nsgOpenAllOutbound: boolean;
 }
 
 export interface VmLifecycleParams {
@@ -156,6 +202,8 @@ export interface AzureVmSummary {
   status: string;
   resourceGroup: string;
   publicIp: string;
+  ipAllocationMethod: string | null;
+  diskSizeGb: number | null;
   timeCreated: string | null;
   /** Approximate running age in whole days; null if unknown / not running. */
   uptimeDays: number | null;

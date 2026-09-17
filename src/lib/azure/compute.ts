@@ -1,5 +1,5 @@
-import type { AzureVmSummary } from "../../types";
-import { AZURE_API_VERSIONS, AZURE_OS_IMAGES, DEFAULT_VM_ADMIN_USERNAME } from "./constants";
+import type { AzureDiskType, AzureOsImage, AzureVmSummary } from "../../types";
+import { AZURE_API_VERSIONS, resolveAzureOsImage } from "./constants";
 import { AzureArmClient } from "./client";
 import { getNetworkInterface, getPublicIpAddress } from "./network";
 
@@ -14,6 +14,11 @@ interface AzureVirtualMachineListItem {
     };
     networkProfile?: {
       networkInterfaces?: Array<{ id: string }>;
+    };
+    storageProfile?: {
+      osDisk?: {
+        diskSizeGb?: number;
+      };
     };
   };
 }
@@ -72,7 +77,7 @@ export async function listVirtualMachines(
       const uptimeAnchor = isRunning ? (powerState?.time ?? timeCreated) : null;
       const uptimeDays = isRunning ? daysSince(uptimeAnchor) : null;
 
-      const publicIp = await resolveVirtualMachinePublicIp(
+      const publicAddress = await resolveVirtualMachinePublicIp(
         client,
         subscriptionId,
         resourceGroup,
@@ -85,7 +90,9 @@ export async function listVirtualMachines(
         vmSize: virtualMachine.properties?.hardwareProfile?.vmSize ?? "Unknown",
         status: statusText,
         resourceGroup,
-        publicIp,
+        publicIp: publicAddress.ip,
+        ipAllocationMethod: publicAddress.allocationMethod,
+        diskSizeGb: virtualMachine.properties?.storageProfile?.osDisk?.diskSizeGb ?? null,
         timeCreated,
         uptimeDays,
       } satisfies AzureVmSummary;
@@ -107,6 +114,7 @@ export interface AzureVmSizeOption {
 const FREE_TIER_SIZE_HINTS = new Set([
   "standard_b1s",
   "standard_b2ats_v2",
+  "standard_b2pts_v2",
 ]);
 
 export async function listVmSizes(
@@ -210,14 +218,17 @@ export async function createVirtualMachine(
   body: {
     location: string;
     vmSize: string;
-    osImage: keyof typeof AZURE_OS_IMAGES;
+    osImage: AzureOsImage;
     diskSizeGb: number;
+    diskType: AzureDiskType;
     networkInterfaceId: string;
+    adminUsername: string;
     adminPassword: string;
+    sshPublicKey?: string | null;
     userData: string | null;
   },
 ): Promise<void> {
-  const osImage = AZURE_OS_IMAGES[body.osImage];
+  const osImage = resolveAzureOsImage(body.osImage, body.vmSize);
   const requestBody: Record<string, unknown> = {
     location: body.location,
     properties: {
@@ -229,16 +240,18 @@ export async function createVirtualMachine(
         osDisk: {
           createOption: "FromImage",
           diskSizeGB: body.diskSizeGb,
-          // Default path targets Premium SSD (P6 = 64GB).
           managedDisk: {
-            storageAccountType: "Premium_LRS",
+            storageAccountType: body.diskType,
           },
         },
       },
       osProfile: {
         computerName: vmName,
-        adminUsername: DEFAULT_VM_ADMIN_USERNAME,
+        adminUsername: body.adminUsername,
         adminPassword: body.adminPassword,
+        linuxConfiguration: {
+          disablePasswordAuthentication: false,
+        },
       },
       networkProfile: {
         networkInterfaces: [
@@ -253,11 +266,21 @@ export async function createVirtualMachine(
     },
   };
 
-  if (body.userData) {
-    (requestBody.properties as Record<string, unknown>).osProfile = {
-      ...((requestBody.properties as Record<string, unknown>).osProfile as Record<string, unknown>),
-      customData: encodeUtf8Base64(body.userData),
+  const osProfile = (requestBody.properties as Record<string, unknown>).osProfile as Record<string, unknown>;
+  if (body.sshPublicKey) {
+    osProfile.linuxConfiguration = {
+      disablePasswordAuthentication: false,
+      ssh: {
+        publicKeys: [{
+          path: `/home/${body.adminUsername}/.ssh/authorized_keys`,
+          keyData: body.sshPublicKey,
+        }],
+      },
     };
+  }
+
+  if (body.userData) {
+    osProfile.customData = encodeUtf8Base64(body.userData);
   }
 
   await client.executeLongRunningOperation(
@@ -302,9 +325,9 @@ async function resolveVirtualMachinePublicIp(
   subscriptionId: string,
   resourceGroup: string,
   nicId: string | null,
-): Promise<string> {
+): Promise<{ ip: string; allocationMethod: string | null }> {
   if (!nicId) {
-    return "N/A";
+    return { ip: "N/A", allocationMethod: null };
   }
 
   try {
@@ -312,13 +335,16 @@ async function resolveVirtualMachinePublicIp(
     const nic = await getNetworkInterface(client, subscriptionId, resourceGroup, nicName);
     const publicIpId = nic.properties.ipConfigurations?.[0]?.properties?.publicIPAddress?.id;
     if (!publicIpId) {
-      return "N/A";
+      return { ip: "N/A", allocationMethod: null };
     }
 
     const publicIpName = extractNameFromId(publicIpId);
     const publicIp = await getPublicIpAddress(client, subscriptionId, resourceGroup, publicIpName);
-    return publicIp.properties?.ipAddress ?? "N/A";
+    return {
+      ip: publicIp.properties?.ipAddress ?? "N/A",
+      allocationMethod: publicIp.properties?.publicIPAllocationMethod ?? null,
+    };
   } catch {
-    return "查询失败";
+    return { ip: "查询失败", allocationMethod: null };
   }
 }
