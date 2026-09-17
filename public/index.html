@@ -236,6 +236,8 @@
 
     .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; position: relative; z-index: 1; }
     .page { padding: 28px clamp(18px, 3vw, 40px) 40px; max-width: 1180px; }
+    #pg-accounts { max-width: none; }
+    #btn-account-switcher { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
     .page.hidden { display: none !important; }
 
     .page-head {
@@ -348,13 +350,14 @@
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
     .acc-foot-note { font-size: 12px; color: var(--text-3); }
-    .accounts-layout {
-      display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;
-    }
+    .accounts-layout { position: relative; min-width: 0; }
     .account-pane {
       background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
-      box-shadow: var(--shadow); padding: 12px; position: sticky; top: 14px; max-height: calc(100vh - 32px);
-      display: flex; flex-direction: column; gap: 10px; overflow: hidden;
+      padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .account-popover {
+      position: absolute; left: 0; top: 0; z-index: 120; width: min(520px, calc(100vw - 48px));
+      max-height: min(72vh, 760px); overflow: hidden; box-shadow: var(--float-shadow);
     }
     .account-pane-head, .section-title-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -364,7 +367,7 @@
     .account-tools .btn { width: 100%; }
     .account-list { overflow: auto; padding-right: 2px; }
     .account-pane .acc-grid { grid-template-columns: 1fr; }
-    .account-main { min-width: 0; }
+    .account-main { min-width: 0; width: 100%; }
     .account-empty { min-height: 320px; }
     .detail-head {
       display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px;
@@ -401,17 +404,29 @@
     .account-detail-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
     .account-list .acc-card { padding: 11px 12px; border-radius: 12px; gap: 8px; }
     .account-list .acc-card.selected { border-color: var(--pr-active); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pr-active) 12%, transparent); }
-    .account-list .acc-name { font-size: 14px; }
+    .account-list .acc-name {
+      font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .account-list .acc-sub { max-width: none; min-width: 0; }
     .account-list .acc-stats { display: none; }
     .account-list .acc-foot { display: none; }
     .account-list .acc-compact {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); font-size: 12px;
     }
     .account-list .acc-compact strong { color: var(--text); font-weight: 700; }
+    @media (max-width: 1100px) {
+      .sidebar { width: var(--scw); }
+      .sidebar .sb-name,
+      .sidebar .sb-lbl,
+      .sidebar .ni-title { display: none; }
+      .sidebar .sb-brand { justify-content: center; padding: 16px 0; }
+      .sidebar .sb-sec, .sidebar .sb-foot { padding: 8px 6px; }
+      .sidebar .ni { justify-content: center; padding: 10px 0; }
+      .sidebar .ni-ico { width: 32px; height: 32px; }
+      .sidebar .sbtoggle { display: none; }
+    }
     @media (max-width: 980px) {
-      .accounts-layout { grid-template-columns: 1fr; }
-      .account-pane { position: static; max-height: none; }
-      .account-list { max-height: 360px; }
+      .account-popover { position: fixed; inset: 72px 12px 12px; width: auto; max-height: none; }
       .account-detail-grid { grid-template-columns: 1fr; }
       .detail-head { flex-direction: column; }
       .vm-toolbar { flex-direction: column; }
@@ -451,7 +466,8 @@
       overflow: auto; background: var(--bg-card); border: 1px solid var(--line);
       border-radius: var(--rl); box-shadow: var(--shadow);
     }
-    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    table { width: 100%; border-collapse: collapse; }
+    table.vm-table { min-width: 800px; }
     th {
       text-align: left; padding: 11px 14px; background: var(--bg-soft);
       font-size: 11px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase;
@@ -547,7 +563,7 @@
       background: var(--bg-soft); border: 1px solid var(--line);
       border-radius: 5px; padding: 1px 6px; color: var(--text); font-size: 12px;
     }
-    .map-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .map-table { width: 100%; min-width: 0; border-collapse: collapse; margin-top: 8px; }
     .map-table th, .map-table td {
       text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--line);
       font-size: 12px; vertical-align: top;
@@ -749,19 +765,20 @@
         <div class="page-head">
           <div>
             <div class="page-title">账户工作台</div>
-            <div class="page-sub">左侧切换账户，右侧直接管理当前账户的虚拟机</div>
+            <div class="page-sub">顶部切换账户，全宽工作台直接管理当前账户的虚拟机</div>
           </div>
           <div class="bgrp">
+            <button class="btn btn-s" type="button" id="btn-account-switcher">账户列表</button>
             <button class="btn btn-s" type="button" id="btn-azure-guide" onclick="openAzureGuide()">如何获取凭据？</button>
             <button class="btn btn-p" type="button" id="btn-open-add" onclick="openAddAccount()">添加账户</button>
           </div>
         </div>
 
         <div class="accounts-layout">
-          <aside class="account-pane" id="view-acc-list">
+          <aside class="account-pane account-popover hidden" id="view-acc-list">
             <div class="account-pane-head">
               <span>账户列表</span>
-              <span class="muted small" id="account-list-count">0 个</span>
+              <span class="bgrp"><span class="muted small" id="account-list-count">0 个</span><button class="btn btn-g btn-sm" type="button" id="btn-close-account-pane">关闭</button></span>
             </div>
             <input class="fi" id="account-search" placeholder="搜索名称、邮箱或订阅 ID" />
             <div class="account-tools">
@@ -814,7 +831,7 @@
                   </select>
                 </div>
                 <div class="tw">
-                  <table>
+                  <table class="vm-table">
                     <thead>
                       <tr>
                         <th>虚拟机</th>

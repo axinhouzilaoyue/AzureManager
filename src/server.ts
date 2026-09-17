@@ -27,7 +27,7 @@ import {
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
 import { listVirtualMachines, listVmSizes } from "./lib/azure/compute";
-import { getAzureCosts, getQuotaTier } from "./lib/azure/cost";
+import { CostQueryError, getAzureCosts, getQuotaTier } from "./lib/azure/cost";
 import { getIpPermission } from "./lib/azure/network";
 import { getSubscriptionDetails, listSubscriptionLocations, registerRequiredProviders } from "./lib/azure/subscription";
 import {
@@ -601,7 +601,13 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     if (!account) return errorResponse(404, "账户未找到");
     const client = new AzureArmClient(ENV, account);
     try {
-      const cost = await getAzureCosts(client, account.subscriptionId, account.expirationDate);
+      await registerRequiredProviders(client, account.subscriptionId).catch(() => {});
+      const cost = await getAzureCosts(
+        client,
+        account.subscriptionId,
+        account.expirationDate,
+        { acc: account.costAcc, history: account.costHistory },
+      );
       await updateAccountCost(ENV, accountId, cost);
       return jsonResponse({ success: true, cached: false, ...cost });
     } catch (error) {
@@ -619,7 +625,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
           warning: account.costWarning || `实时查询失败，已显示缓存：${detail}`,
         });
       }
-      return errorResponse(502, "Azure 成本查询失败", { detail });
+      return errorResponse(502, error instanceof CostQueryError ? error.message : "Azure 成本查询失败", { detail });
     }
   }
 

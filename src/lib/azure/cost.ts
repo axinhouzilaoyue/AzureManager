@@ -18,6 +18,27 @@ interface CostQueryResult {
   cost: string;
   currency: string;
   warning: string | null;
+  failed: boolean;
+}
+
+interface AzureErrorPayload {
+  code: string;
+  message: string;
+  requestId: string | null;
+}
+
+export class CostQueryError extends Error {
+  status: number | null;
+  code: string | null;
+  requestId: string | null;
+
+  constructor(message: string, input: { status?: number | null; code?: string | null; requestId?: string | null } = {}) {
+    super(message);
+    this.name = "CostQueryError";
+    this.status = input.status ?? null;
+    this.code = input.code ?? null;
+    this.requestId = input.requestId ?? null;
+  }
 }
 
 export async function getQuotaTier(
@@ -25,23 +46,40 @@ export async function getQuotaTier(
   subscriptionId: string,
 ): Promise<string> {
   try {
-    const response = await client.request<{ value?: Array<{ properties?: Record<string, unknown> }> }>(
+    const response = await client.requestResponse(
       "GET",
       `/subscriptions/${subscriptionId}/providers/Microsoft.CognitiveServices/quotaTiers`,
       { apiVersion: AZURE_API_VERSIONS.cognitiveServices },
     );
-    const properties = response.value?.[0]?.properties ?? {};
-    const direct = properties.currentTierName;
-    if (typeof direct === "string" && direct.trim()) return direct.trim();
-    for (const value of Object.values(properties)) {
-      if (typeof value === "string" && /^tier\s*[01]$/i.test(value.trim())) return value.trim();
+
+    const bodyText = await response.text();
+    if (response.ok) {
+      const payload = parseJson<{ value?: Array<{ properties?: Record<string, unknown> }> }>(bodyText);
+      const properties = payload?.value?.[0]?.properties ?? {};
+      if (Object.keys(properties).length === 0) return "未分配";
+      const direct = properties.currentTierName;
+      if (typeof direct === "string" && direct.trim()) return direct.trim();
+      for (const value of Object.values(properties)) {
+        if (typeof value === "string" && /^(tier\s*[0-9]+|free-tier)$/i.test(value.trim())) return value.trim();
+      }
+      return "未识别";
     }
-    return "未识别";
+
+    const azureError = parseAzureError(bodyText);
+    if (response.status === 401) return "认证失败";
+    if (response.status === 403) return "无权限";
+    if (response.status === 404) {
+      if (azureError.code === "SubscriptionNotFound") return "订阅不存在或无权";
+      if (azureError.code === "NoRegisteredProviderFound" || azureError.code === "MissingSubscriptionRegistration") {
+        return "Provider 未注册";
+      }
+      if (azureError.code === "ResourceNotFound") return "未分配";
+      return "不支持";
+    }
+    return "未获取";
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes(":404:")) return "不支持";
-    if (message.includes(":401:") || message.includes(":403:")) return "无权限";
-    return "未获取";
+    return message.startsWith("azure_auth_failed:") ? "认证失败" : "未获取";
   }
 }
 
@@ -49,12 +87,13 @@ export async function getAzureCosts(
   client: AzureArmClient,
   subscriptionId: string,
   expirationDate: string | null,
+  cached?: {
+    acc?: string | null;
+    history?: string | null;
+  },
 ): Promise<AzureCostResult> {
-  // The reference implementation waits briefly before querying Cost Management
-  // to reduce throttling when called immediately after account connection.
   await delay(1000);
 
-  const warnings: string[] = [];
   const mtd = await queryCost(client, subscriptionId, {
     type: "Usage",
     timeframe: "MonthToDate",
@@ -65,42 +104,59 @@ export async function getAzureCosts(
       },
     },
   });
+
+  if (mtd.failed) {
+    throw new CostQueryError(mtd.warning ?? "本月消费查询失败", { code: "CostQueryFailed" });
+  }
+
+  const warnings: string[] = [];
   if (mtd.warning) warnings.push(`本月消费：${mtd.warning}`);
+
+  if (!isNumericCost(mtd.cost)) {
+    throw new CostQueryError(mtd.warning ?? "本月消费未返回有效金额");
+  }
 
   let accumulated = mtd.cost;
   let history = "0.00";
   let currency = mtd.currency;
+  const periodStart = resolveHistoryStart(expirationDate);
 
-  if (isNumericCost(mtd.cost)) {
-    const periodStart = resolveHistoryStart(expirationDate);
-    const yearly = periodStart
-      ? await queryCost(client, subscriptionId, {
-          type: "Usage",
-          timeframe: "Custom",
-          timePeriod: {
-            from: `${periodStart}T00:00:00Z`,
-            to: `${new Date().toISOString().slice(0, 10)}T23:59:59Z`,
-          },
-          dataset: {
-            granularity: "None",
-            aggregation: {
-              totalCost: { name: "PreTaxCost", function: "Sum" },
-            },
-          },
-        })
-      : { cost: mtd.cost, currency, warning: null };
+  if (periodStart) {
+    const yearly = await queryCost(client, subscriptionId, {
+      type: "Usage",
+      timeframe: "Custom",
+      timePeriod: {
+        from: `${periodStart}T00:00:00Z`,
+        to: `${new Date().toISOString().slice(0, 10)}T23:59:59Z`,
+      },
+      dataset: {
+        granularity: "None",
+        aggregation: {
+          totalCost: { name: "PreTaxCost", function: "Sum" },
+        },
+      },
+    });
 
-    if (yearly.warning) warnings.push(`累计消费：${yearly.warning}`);
-    if (isNumericCost(yearly.cost)) {
+    if (yearly.failed || !isNumericCost(yearly.cost)) {
+      warnings.push(`累计消费：${yearly.warning ?? "未获取"}`);
+      if (cached?.acc && isNumericCost(cached.acc)) {
+        accumulated = cached.acc;
+        history = cached.history && isNumericCost(cached.history) ? cached.history : "未获取";
+        warnings.push("累计消费刷新失败，已沿用上一次成功结果");
+      } else {
+        accumulated = mtd.cost;
+        history = "0.00";
+        warnings.push("累计消费暂不可用，当前累计值仅展示本月消费");
+      }
+    } else {
       const mtdValue = Number(mtd.cost);
       const yearlyValue = Math.max(Number(yearly.cost), mtdValue);
       accumulated = formatCost(yearlyValue);
       history = formatCost(Math.max(0, yearlyValue - mtdValue));
       currency = yearly.currency || currency;
-    } else if (yearly.cost !== "0.00") {
-      warnings.push("累计消费暂不可用，当前累计值仅展示本月消费");
-      accumulated = mtd.cost;
     }
+  } else {
+    warnings.push("未设置订阅到期日，累计消费暂按本月消费展示");
   }
 
   return {
@@ -135,7 +191,7 @@ async function queryCost(
   payload: unknown,
 ): Promise<CostQueryResult> {
   const path = `/subscriptions/${subscriptionId}/providers/Microsoft.CostManagement/query`;
-  let lastError = "";
+  let lastWarning = "";
 
   for (let attempt = 0; attempt < COST_MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -144,55 +200,97 @@ async function queryCost(
         body: payload,
       });
 
+      if (response.status === 204) {
+        return { cost: "0.00", currency: "", warning: "Cost Management 暂无返回数据", failed: false };
+      }
+
+      const bodyText = await response.text();
       if (response.ok) {
-        return { ...parseCostResponse((await response.json()) as CostResponse), warning: null };
+        return { ...parseCostResponse(parseJson<CostResponse>(bodyText)), warning: null, failed: false };
       }
 
-      const responseText = await response.text();
-      lastError = `HTTP ${response.status}`;
-
-      if (response.status === 401 || response.status === 403) {
-        return { cost: "无权限(可能为赞助/学生订阅)", currency: "", warning: "当前服务主体没有 Cost Management 查询权限" };
-      }
-      if (response.status === 400 || response.status === 404) {
-        const normalized = responseText.toLowerCase();
-        if (normalized.includes("not supported")) {
-          return { cost: "赞助订阅请去官网查看", currency: "", warning: null };
-        }
-        return { cost: "未获取", currency: "", warning: `Cost Management 不支持当前查询（HTTP ${response.status}）` };
-      }
-
-      if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
+      const azureError = parseAzureError(bodyText);
+      if (response.status === 401) {
         return {
           cost: "未获取",
           currency: "",
-          warning: isRetryableStatus(response.status)
-            ? "Azure 成本服务暂时不可用或触发限流，已保留上次结果"
-            : `Cost Management 查询失败（HTTP ${response.status}）`,
+          warning: "Azure 认证失败或查看费用权限未启用",
+          failed: true,
+        };
+      }
+      if (response.status === 403) {
+        return {
+          cost: "未获取",
+          currency: "",
+          warning: "权限不足：需要 Cost Management Reader 或对应计费权限",
+          failed: true,
+        };
+      }
+      if (response.status === 400 || response.status === 404 || response.status === 422) {
+        return {
+          cost: "未获取",
+          currency: "",
+          warning: classifyCostError(response.status, azureError),
+          failed: true,
         };
       }
 
-      const retryAfter = parseRetryAfterMs(response.headers.get("Retry-After"));
+      lastWarning = isRetryableStatus(response.status)
+        ? `Azure 成本服务暂时不可用或触发限流（HTTP ${response.status}）`
+        : `Cost Management 查询失败（HTTP ${response.status}）`;
+
+      if (!isRetryableStatus(response.status) || attempt === COST_MAX_ATTEMPTS - 1) {
+        return { cost: "未获取", currency: "", warning: lastWarning, failed: true };
+      }
+
+      const retryAfter = parseRetryAfterMs(
+        response.headers.get("x-ms-ratelimit-microsoft.consumption-retry-after")
+          ?? response.headers.get("Retry-After"),
+      );
       const backoff = Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt);
       await delay(retryAfter ?? backoff);
     } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      lastWarning = error instanceof Error ? error.message : String(error);
       if (attempt === COST_MAX_ATTEMPTS - 1) {
-        const warning = lastError.startsWith("azure_auth_failed:")
-          ? "Azure 认证失败，请检查租户、Client ID 和 Client Secret"
-          : "网络或服务异常，已保留上次结果";
-        return { cost: "未获取", currency: "", warning };
+        return {
+          cost: "未获取",
+          currency: "",
+          warning: lastWarning.startsWith("azure_auth_failed:")
+            ? "Azure 认证失败，请检查租户、Client ID 和 Client Secret"
+            : "网络或服务异常，未更新上次成功结果",
+          failed: true,
+        };
       }
       await delay(Math.min(COST_RETRY_MAX_MS, COST_RETRY_BASE_MS * 2 ** attempt));
     }
   }
 
-  return { cost: "未获取", currency: "", warning: lastError || "查询失败" };
+  return { cost: "未获取", currency: "", warning: lastWarning || "查询失败", failed: true };
 }
 
-function parseCostResponse(data: CostResponse): { cost: string; currency: string } {
-  const columns = data.properties?.columns ?? [];
-  const row = data.properties?.rows?.[0] ?? [];
+function classifyCostError(status: number, error: AzureErrorPayload): string {
+  switch (error.code) {
+    case "SubscriptionTypeNotSupported":
+      return "当前订阅类型不支持 Cost Management 查询";
+    case "SubscriptionNotFound":
+      return "订阅不存在，或当前服务主体无权访问";
+    case "AuthorizationFailed":
+    case "RBACAccessDenied":
+    case "BillingAccessDenied":
+      return "权限不足：需要 Cost Management Reader 或对应计费权限";
+    case "MissingSubscriptionRegistration":
+    case "NoRegisteredProviderFound":
+      return "Microsoft.CostManagement Provider 未注册或尚未完成注册";
+    case "BadRequest":
+      return "Cost Management 请求参数不受当前订阅支持";
+    default:
+      return `Cost Management 查询失败（HTTP ${status}${error.code ? `，${error.code}` : ""}）`;
+  }
+}
+
+function parseCostResponse(data: CostResponse | null): { cost: string; currency: string } {
+  const columns = data?.properties?.columns ?? [];
+  const row = data?.properties?.rows?.[0] ?? [];
   const costIndex = columns.findIndex((column) => column.name === "PreTaxCost" || column.name === "Cost");
   const currencyIndex = columns.findIndex((column) => column.name === "Currency");
   const rawCost = costIndex >= 0 ? row[costIndex] : row[0];
@@ -202,6 +300,30 @@ function parseCostResponse(data: CostResponse): { cost: string; currency: string
     return { cost: "0.00", currency: rawCurrency ? String(rawCurrency) : "" };
   }
   return { cost: String(numeric), currency: rawCurrency ? String(rawCurrency) : "" };
+}
+
+function parseAzureError(bodyText: string): AzureErrorPayload {
+  const payload = parseJson<{
+    error?: { code?: string; message?: string; innererror?: { code?: string; message?: string } };
+  }>(bodyText);
+  const error = payload?.error ?? {};
+  const generatedCode = error.innererror?.code || error.code || "";
+  const message = error.innererror?.message || error.message || "";
+  const requestIdMatch = bodyText.match(/"?x-ms-request-id"?\s*[:=]\s*"?([0-9a-f-]+)/i);
+  return {
+    code: String(generatedCode || "").trim(),
+    message: String(message || "").trim(),
+    requestId: requestIdMatch?.[1] ?? null,
+  };
+}
+
+function parseJson<T>(text: string): T | null {
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -214,9 +336,12 @@ function isNumericCost(value: string): boolean {
 
 function parseRetryAfterMs(value: string | null): number | null {
   if (!value) return null;
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  return Math.min(seconds * 1000, COST_RETRY_MAX_MS);
+  const trimmed = value.trim();
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, COST_RETRY_MAX_MS);
+  const date = Date.parse(trimmed);
+  if (Number.isFinite(date)) return Math.max(0, Math.min(date - Date.now(), COST_RETRY_MAX_MS));
+  return null;
 }
 
 function formatCost(value: number): string {

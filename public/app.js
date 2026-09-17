@@ -221,9 +221,18 @@ async function refreshOverview() {
 }
 
 // ── accounts ──────────────────────────────────────────────────
+function setAccountPaneOpen(open) {
+  const pane = $('view-acc-list');
+  if (!pane) return;
+  pane.classList.toggle('hidden', !open);
+  if (open) {
+    renderAccGrid();
+    setTimeout(() => $('account-search')?.focus(), 30);
+  }
+}
+
 function showAccountListView() {
   const acc = S.accounts.find((item) => item.id === S.selectedAccId);
-  $('view-acc-list')?.classList.remove('hidden');
   if (acc) {
     $('account-empty')?.classList.add('hidden');
     $('view-vms')?.classList.remove('hidden');
@@ -352,6 +361,7 @@ function updateAccountHeader(account) {
   const subscriptionName = detail.subscriptionName || st.subscriptionDisplayName || '未获取';
   const subscriptionState = detail.subscriptionState || st.state || '未获取';
   $('vm-acc-title').textContent = title;
+  if ($('btn-account-switcher')) $('btn-account-switcher').textContent = `${title} ▾`;
   $('vm-acc-sub').textContent = [
     subscriptionName,
     subscriptionState,
@@ -802,9 +812,9 @@ async function openVmView(accId, e) {
 
   const acc = S.accounts.find(a => a.id === accId);
   if (!acc) return;
+  $('view-acc-list')?.classList.add('hidden');
   $('account-empty')?.classList.add('hidden');
   $('view-vms')?.classList.remove('hidden');
-  $('view-acc-list')?.classList.remove('hidden');
   showAccountDetailFromCache(acc);
   paintAccGrid();
 
@@ -1819,6 +1829,13 @@ function bindUI() {
       return;
     }
 
+    const pane = $('view-acc-list');
+    if (pane && !pane.classList.contains('hidden')
+      && !t.closest('#view-acc-list')
+      && !t.closest('#btn-account-switcher')) {
+      pane.classList.add('hidden');
+    }
+
     const nav = t.closest('.ni[data-page]');
     if (nav) {
       e.preventDefault();
@@ -1846,6 +1863,11 @@ function bindUI() {
 
     if (t.closest('#btn-logout')) return void doLogout();
     if (t.closest('#login-btn')) return void doLogin();
+    if (t.closest('#btn-account-switcher')) {
+      const pane = $('view-acc-list');
+      return void setAccountPaneOpen(Boolean(pane?.classList.contains('hidden')));
+    }
+    if (t.closest('#btn-close-account-pane')) return void setAccountPaneOpen(false);
     if (t.closest('#btn-guide-to-add')) {
       closeModal('mo-azure-guide');
       openAddAccount();

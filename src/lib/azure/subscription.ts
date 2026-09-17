@@ -26,6 +26,7 @@ const REQUIRED_PROVIDERS = [
   "Microsoft.Compute",
   "Microsoft.Network",
   "Microsoft.CostManagement",
+  "Microsoft.CognitiveServices",
 ] as const;
 
 export async function registerRequiredProviders(
