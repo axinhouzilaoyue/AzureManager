@@ -312,7 +312,7 @@
     /* 账户列表：单行紧凑卡片，仅展示邮箱 / VM 台数 / 剩余天数 */
     .acc-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
     .acc-card {
-      display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+      display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center;
       gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
       border: 1px solid transparent; background: transparent;
       transition: background var(--t), border-color var(--t);
@@ -339,12 +339,6 @@
     .acc-days.ok { color: var(--ok-text); font-weight: 650; }
     .acc-days.warn { color: #b45309; font-weight: 650; }
     .acc-days.danger { color: var(--err-text); font-weight: 700; }
-    .acc-info {
-      opacity: 0.5; border: 0; background: transparent; color: var(--text-3); cursor: pointer;
-      font-size: 11px; font-weight: 650; padding: 3px 5px; border-radius: 6px; transition: opacity var(--t);
-    }
-    .acc-card:hover .acc-info, .acc-card.selected .acc-info { opacity: 1; }
-    .acc-info:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
     .accounts-layout {
       display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 16px; align-items: start;
     }
@@ -369,7 +363,7 @@
       display: flex; gap: 6px; padding-top: 8px;
       border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
     }
-    .account-pane-foot .btn { flex: 1; }
+    .account-pane-foot .btn { flex: 1; padding: 4px 4px; font-size: 11px; }
     .account-pane .acc-grid { grid-template-columns: 1fr; gap: 6px; }
     .account-main { min-width: 0; width: 100%; }
     .account-empty { min-height: 320px; }
@@ -378,12 +372,10 @@
     }
     /* 账户摘要：单行紧凑统计条，替代 5 个独立卡片 */
     .insight-bar {
-      width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 0;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 0;
       border: 1px solid var(--line); border-radius: 10px; background: var(--bg-card);
-      padding: 9px 12px; margin-bottom: 10px; cursor: pointer; text-align: left;
-      transition: border-color var(--t), background var(--t);
+      padding: 9px 12px; margin-bottom: 10px;
     }
-    .insight-bar:hover { border-color: var(--line-3); background: #fafafa; }
     .insight-bar .ib {
       display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 12px;
       border-left: 1px solid var(--line); white-space: nowrap;
@@ -495,6 +487,19 @@
 
     /* 状态：用颜色圆点替代文字徽标 */
     .vm-status-cell { width: 56px; text-align: center; }
+
+    /* 切换账户时的加载占位 */
+    .vm-loading {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      padding: 42px 16px; color: var(--text-3); font-size: 13px;
+    }
+    .vm-spinner {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      border: 2px solid color-mix(in srgb, var(--text) 14%, transparent);
+      border-top-color: color-mix(in srgb, var(--text) 46%, transparent);
+      animation: vmSpin 0.7s linear infinite;
+    }
+    @keyframes vmSpin { to { transform: rotate(360deg); } }
     .dot {
       display: inline-block; width: 9px; height: 9px; border-radius: 50%;
       background: #9ca3af; vertical-align: middle;
@@ -773,7 +778,6 @@
           </div>
           <div class="bgrp">
             <button class="btn btn-s" type="button" id="btn-refresh-overview">刷新</button>
-            <button class="btn btn-p" type="button" onclick="openAddAccount()">添加账户</button>
           </div>
         </div>
 
@@ -813,24 +817,19 @@
             <div class="page-title">账户工作台</div>
             <div class="page-sub">左侧常驻账户列表，右侧管理当前账户的虚拟机</div>
           </div>
-          <div class="bgrp">
-            <button class="btn btn-s" type="button" id="btn-azure-guide" onclick="openAzureGuide()">如何获取凭据？</button>
-            <button class="btn btn-p" type="button" id="btn-open-add" onclick="openAddAccount()">添加账户</button>
-          </div>
         </div>
 
         <div class="accounts-layout">
           <aside class="account-pane" id="view-acc-list">
             <div class="account-pane-head">
               <span>账户 <span class="acc-count" id="account-list-count">0</span></span>
-              <span class="acc-pane-actions">
-                <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-name" title="按名称/邮箱排序">名称 ⇅</button>
-                <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-expiry" title="按到期时间排序">到期 ⇅</button>
-              </span>
+              <button class="btn btn-p btn-sm" type="button" id="btn-open-add" onclick="openAddAccount()">+ 添加</button>
             </div>
             <input class="fi fi-sm" id="account-search" placeholder="搜索账户" />
             <div id="acc-grid" class="acc-grid account-list"></div>
             <div class="account-pane-foot">
+              <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-name" title="按名称/邮箱排序">名称 ⇅</button>
+              <button class="btn btn-g btn-sm" type="button" id="btn-sort-account-expiry" title="按到期时间排序">到期 ⇅</button>
               <button class="btn btn-g btn-sm" type="button" id="btn-import-accounts">导入</button>
               <button class="btn btn-g btn-sm" type="button" id="btn-export-accounts">导出</button>
               <input class="hidden" type="file" id="account-import-file" accept="application/json,.json" />
@@ -876,9 +875,9 @@
                   <table class="vm-table">
                     <thead>
                       <tr>
+                        <th>状态</th>
                         <th>虚拟机</th>
                         <th>规格</th>
-                        <th>状态</th>
                         <th>开机</th>
                         <th>公网 IP</th>
                         <th>操作</th>
@@ -939,13 +938,88 @@
 </div>
 
 <!-- Modal: Azure 凭据获取指南 -->
-<div id="mo-azure-guide" class="mo hidden">
+<!-- Modal: 添加账户 -->
+<div id="mo-add-acc" class="mo hidden">
   <div class="md md-xl">
     <div class="md-h">
-      <span class="md-ttl">如何获取 Azure 账户凭据</span>
-      <button class="md-x" data-close="mo-azure-guide" type="button">×</button>
+      <span class="md-ttl">添加 Azure 账户</span>
+      <button class="md-x" data-close="mo-add-acc" type="button">×</button>
     </div>
     <div class="md-b">
+      <div class="field-guide">
+        支持两种方式：
+        <strong>手动逐项填写</strong>，或直接粘贴 Cloud Shell 输出的 <strong>JSON</strong> 自动填充。
+        不清楚怎么拿？切到「如何获取凭据」看分步说明。
+      </div>
+
+      <div class="tabs" style="margin-bottom:4px">
+        <div class="tab active" data-add-mode="manual" id="add-tab-manual">手动填写</div>
+        <div class="tab" data-add-mode="json" id="add-tab-json">粘贴 JSON</div>
+        <div class="tab" data-add-mode="guide" id="add-tab-guide">如何获取凭据</div>
+      </div>
+
+      <div id="add-mode-json" class="hidden">
+        <div class="fg">
+          <label class="fl" for="add-json">
+            <span class="fl-title">Cloud Shell / az 输出</span>
+            <span class="fl-azure">支持 appId / password / tenant；subscriptionId 可写在 JSON 内或单独一行</span>
+          </label>
+          <textarea class="fi mono" id="add-json" rows="12" spellcheck="false" placeholder='{
+  "appId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "displayName": "azure-cli-....",
+  "password": "xxxxxxxx",
+  "tenant": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
+          <div class="fhint">也兼容 <code>clientId</code> / <code>clientSecret</code> / <code>tenantId</code> / <code>subscriptionId</code> 等常见键名。</div>
+        </div>
+        <div class="bgrp">
+          <button class="btn btn-s" type="button" id="btn-parse-json">解析并填充到表单</button>
+        </div>
+        <div id="add-json-result" class="hidden"></div>
+      </div>
+
+      <div id="add-mode-manual">
+        <input type="hidden" id="add-name" value="" />
+        <div class="frow">
+          <div class="fg">
+            <label class="fl" for="add-cid">
+              <span class="fl-title">应用 (客户端) ID</span>
+              <span class="fl-azure">appId / Application (client) ID</span>
+            </label>
+            <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
+          </div>
+          <div class="fg">
+            <label class="fl" for="add-tid">
+              <span class="fl-title">目录 (租户) ID</span>
+              <span class="fl-azure">tenant / Directory (tenant) ID</span>
+            </label>
+            <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="fg">
+          <label class="fl" for="add-sec">
+            <span class="fl-title">客户端密钥 Value</span>
+            <span class="fl-azure">password / Client secret Value</span>
+          </label>
+          <input class="fi mono" type="password" id="add-sec" placeholder="JSON 中的 password，或门户新建密钥的 Value" autocomplete="new-password" />
+        </div>
+
+        <div class="fg">
+          <label class="fl" for="add-sid">
+            <span class="fl-title">订阅 ID</span>
+            <span class="fl-azure">subscriptionId</span>
+          </label>
+          <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
+        </div>
+      </div>
+
+      <div id="add-check-result" class="hidden"></div>
+      <div class="fhint" id="add-save-hint">请先验证凭据，通过后才能保存。下一步将填写邮箱与订阅到期日。</div>
+
+      <div id="add-mode-guide" class="hidden">
+
       <div class="field-guide">
         推荐用 <strong>Azure Cloud Shell</strong> 一条命令创建服务主体（Service Principal）。
         成功后会输出 JSON，可直接粘贴到「添加账户」里自动填充。
@@ -1049,93 +1123,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
           <button class="btn btn-s btn-sm" type="button" onclick="copyText(document.getElementById('guide-cmd-regions').textContent)">复制命令</button>
         </div>
       </div>
-    </div>
-    <div class="md-f">
-      <button class="btn btn-g" type="button" data-close="mo-azure-guide">关闭</button>
-      <button class="btn btn-p" type="button" id="btn-guide-to-add">去添加账户</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: 添加账户 -->
-<div id="mo-add-acc" class="mo hidden">
-  <div class="md md-xl">
-    <div class="md-h">
-      <span class="md-ttl">添加 Azure 账户</span>
-      <button class="md-x" data-close="mo-add-acc" type="button">×</button>
-    </div>
-    <div class="md-b">
-      <div class="field-guide">
-        支持两种方式：
-        <strong>手动逐项填写</strong>，或直接粘贴 Cloud Shell 输出的 <strong>JSON</strong> 自动填充。
-        不清楚怎么拿？先看
-        <a href="javascript:void(0)" onclick="openAzureGuide()" style="color:var(--pr-active);font-weight:700">如何获取凭据</a>。
       </div>
-
-      <div class="tabs" style="margin-bottom:4px">
-        <div class="tab active" data-add-mode="manual" id="add-tab-manual">手动填写</div>
-        <div class="tab" data-add-mode="json" id="add-tab-json">粘贴 JSON</div>
-      </div>
-
-      <div id="add-mode-json" class="hidden">
-        <div class="fg">
-          <label class="fl" for="add-json">
-            <span class="fl-title">Cloud Shell / az 输出</span>
-            <span class="fl-azure">支持 appId / password / tenant；subscriptionId 可写在 JSON 内或单独一行</span>
-          </label>
-          <textarea class="fi mono" id="add-json" rows="12" spellcheck="false" placeholder='{
-  "appId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "displayName": "azure-cli-....",
-  "password": "xxxxxxxx",
-  "tenant": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-}
-subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy'></textarea>
-          <div class="fhint">也兼容 <code>clientId</code> / <code>clientSecret</code> / <code>tenantId</code> / <code>subscriptionId</code> 等常见键名。</div>
-        </div>
-        <div class="bgrp">
-          <button class="btn btn-s" type="button" id="btn-parse-json">解析并填充到表单</button>
-        </div>
-        <div id="add-json-result" class="hidden"></div>
-      </div>
-
-      <div id="add-mode-manual">
-        <input type="hidden" id="add-name" value="" />
-        <div class="frow">
-          <div class="fg">
-            <label class="fl" for="add-cid">
-              <span class="fl-title">应用 (客户端) ID</span>
-              <span class="fl-azure">appId / Application (client) ID</span>
-            </label>
-            <input class="fi mono" type="text" id="add-cid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
-          </div>
-          <div class="fg">
-            <label class="fl" for="add-tid">
-              <span class="fl-title">目录 (租户) ID</span>
-              <span class="fl-azure">tenant / Directory (tenant) ID</span>
-            </label>
-            <input class="fi mono" type="text" id="add-tid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
-          </div>
-        </div>
-
-        <div class="fg">
-          <label class="fl" for="add-sec">
-            <span class="fl-title">客户端密钥 Value</span>
-            <span class="fl-azure">password / Client secret Value</span>
-          </label>
-          <input class="fi mono" type="password" id="add-sec" placeholder="JSON 中的 password，或门户新建密钥的 Value" autocomplete="new-password" />
-        </div>
-
-        <div class="fg">
-          <label class="fl" for="add-sid">
-            <span class="fl-title">订阅 ID</span>
-            <span class="fl-azure">subscriptionId</span>
-          </label>
-          <input class="fi mono" type="text" id="add-sid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" />
-        </div>
-      </div>
-
-      <div id="add-check-result" class="hidden"></div>
-      <div class="fhint" id="add-save-hint">请先验证凭据，通过后才能保存。下一步将填写邮箱与订阅到期日。</div>
     </div>
     <div class="md-f">
       <button class="btn btn-g" type="button" data-close="mo-add-acc">取消</button>

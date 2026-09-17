@@ -1,7 +1,12 @@
 import type { AzureDiskType, AzureOsImage, AzureVmSummary } from "../../types";
 import { AZURE_API_VERSIONS, resolveAzureOsImage } from "./constants";
 import { AzureArmClient } from "./client";
-import { getNetworkInterface, getPublicIpAddress } from "./network";
+import {
+  getNetworkInterface,
+  getPublicIpAddress,
+  type AzureNetworkInterface,
+  type AzurePublicIpAddress,
+} from "./network";
 
 interface AzureVirtualMachineListItem {
   id: string;
@@ -9,6 +14,7 @@ interface AzureVirtualMachineListItem {
   location: string;
   properties?: {
     timeCreated?: string;
+    instanceView?: AzureInstanceView;
     hardwareProfile?: {
       vmSize?: string;
     };
@@ -21,6 +27,12 @@ interface AzureVirtualMachineListItem {
       };
     };
   };
+}
+
+/** 订阅内全部 NIC / 公网 IP 的本地索引，避免每台 VM 各查一次。 */
+interface NetworkIndex {
+  nicById: Map<string, AzureNetworkInterface>;
+  ipById: Map<string, AzurePublicIpAddress>;
 }
 
 interface AzureVirtualMachine {
@@ -51,25 +63,48 @@ function daysSince(iso: string | null | undefined): number | null {
   return Math.floor(ms / 86_400_000);
 }
 
+function virtualMachinesPath(subscriptionId: string): string {
+  return `/subscriptions/${subscriptionId}/providers/Microsoft.Compute/virtualMachines`;
+}
+
+/**
+ * 只统计虚拟机数量。概览接口只需要数量，不必为每台 VM 拉取 instanceView 与公网 IP。
+ */
+export async function countVirtualMachines(
+  client: AzureArmClient,
+  subscriptionId: string,
+): Promise<number> {
+  const items = await client.paginate<{ id?: string }>(
+    virtualMachinesPath(subscriptionId),
+    AZURE_API_VERSIONS.compute,
+  );
+  return items.length;
+}
+
+/**
+ * 一次列出订阅内全部 VM（展开 instanceView）以及全部 NIC / 公网 IP，
+ * 再在本地做关联。相比逐台 VM 查询，请求数从 1 + 2N 降到 3。
+ */
 export async function listVirtualMachines(
   client: AzureArmClient,
   subscriptionId: string,
 ): Promise<AzureVmSummary[]> {
-  const virtualMachines = await client.paginate<AzureVirtualMachineListItem>(
-    `/subscriptions/${subscriptionId}/providers/Microsoft.Compute/virtualMachines`,
-    AZURE_API_VERSIONS.compute,
-  );
+  const [virtualMachines, networkIndex] = await Promise.all([
+    listVirtualMachineItems(client, subscriptionId),
+    buildNetworkIndex(client, subscriptionId).catch(() => null),
+  ]);
 
   const summaries = await Promise.all(
     virtualMachines.map(async (virtualMachine) => {
       const resourceGroup = extractResourceGroupFromId(virtualMachine.id);
-      const instanceView = await getVirtualMachineInstanceView(
-        client,
-        subscriptionId,
-        resourceGroup,
-        virtualMachine.name,
-      );
-      const powerState = instanceView.statuses?.find((status) => status.code?.startsWith("PowerState/"));
+      const instanceView = virtualMachine.properties?.instanceView
+        ?? await getVirtualMachineInstanceView(
+          client,
+          subscriptionId,
+          resourceGroup,
+          virtualMachine.name,
+        ).catch(() => undefined);
+      const powerState = instanceView?.statuses?.find((status) => status.code?.startsWith("PowerState/"));
       const statusText = powerState?.displayStatus?.replace(/^VM\s+/i, "") ?? "Unknown";
       const isRunning = (powerState?.code || statusText).toLowerCase().includes("running");
       const timeCreated = virtualMachine.properties?.timeCreated ?? null;
@@ -77,12 +112,9 @@ export async function listVirtualMachines(
       const uptimeAnchor = isRunning ? (powerState?.time ?? timeCreated) : null;
       const uptimeDays = isRunning ? daysSince(uptimeAnchor) : null;
 
-      const publicAddress = await resolveVirtualMachinePublicIp(
-        client,
-        subscriptionId,
-        resourceGroup,
-        virtualMachine.properties?.networkProfile?.networkInterfaces?.[0]?.id ?? null,
-      );
+      const nicId = virtualMachine.properties?.networkProfile?.networkInterfaces?.[0]?.id ?? null;
+      const publicAddress = resolvePublicAddressFromIndex(networkIndex, nicId)
+        ?? await resolveVirtualMachinePublicIp(client, subscriptionId, resourceGroup, nicId);
 
       return {
         name: virtualMachine.name,
@@ -100,6 +132,62 @@ export async function listVirtualMachines(
   );
 
   return summaries.sort((left: AzureVmSummary, right: AzureVmSummary) => left.name.localeCompare(right.name));
+}
+
+async function listVirtualMachineItems(
+  client: AzureArmClient,
+  subscriptionId: string,
+): Promise<AzureVirtualMachineListItem[]> {
+  const path = virtualMachinesPath(subscriptionId);
+  try {
+    // 展开 instanceView 后，电源状态随列表一并返回，无需逐台再查。
+    return await client.paginate<AzureVirtualMachineListItem>(
+      `${path}?$expand=instanceView`,
+      AZURE_API_VERSIONS.compute,
+    );
+  } catch {
+    return client.paginate<AzureVirtualMachineListItem>(path, AZURE_API_VERSIONS.compute);
+  }
+}
+
+async function buildNetworkIndex(
+  client: AzureArmClient,
+  subscriptionId: string,
+): Promise<NetworkIndex> {
+  const [nics, publicIps] = await Promise.all([
+    client.paginate<AzureNetworkInterface>(
+      `/subscriptions/${subscriptionId}/providers/Microsoft.Network/networkInterfaces`,
+      AZURE_API_VERSIONS.network,
+    ),
+    client.paginate<AzurePublicIpAddress>(
+      `/subscriptions/${subscriptionId}/providers/Microsoft.Network/publicIPAddresses`,
+      AZURE_API_VERSIONS.network,
+    ),
+  ]);
+
+  return {
+    nicById: new Map(nics.map((nic) => [nic.id.toLowerCase(), nic])),
+    ipById: new Map(publicIps.map((ip) => [ip.id.toLowerCase(), ip])),
+  };
+}
+
+function resolvePublicAddressFromIndex(
+  index: NetworkIndex | null,
+  nicId: string | null,
+): { ip: string; allocationMethod: string | null } | null {
+  if (!index || !nicId) return null;
+  const nic = index.nicById.get(nicId.toLowerCase());
+  const configurations = nic?.properties?.ipConfigurations ?? [];
+  const configuration = configurations.find((item) => item.properties?.primary) ?? configurations[0];
+  const publicIpId = configuration?.properties?.publicIPAddress?.id;
+  if (!publicIpId) return { ip: "N/A", allocationMethod: null };
+
+  const publicIp = index.ipById.get(publicIpId.toLowerCase());
+  if (!publicIp) return { ip: "N/A", allocationMethod: null };
+  return {
+    ip: publicIp.properties?.ipAddress ?? "N/A",
+    allocationMethod: publicIp.properties?.publicIPAllocationMethod ?? null,
+  };
 }
 
 export interface AzureVmSizeOption {

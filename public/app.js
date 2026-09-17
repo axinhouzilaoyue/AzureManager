@@ -20,6 +20,7 @@ const S = {
   vmSearch: '',
   vmStatusFilter: 'all',
   renderedVms: [],
+  vmsLoading: false,
 };
 
 // ── api ───────────────────────────────────────────────────────
@@ -113,11 +114,6 @@ function switchPage(page) {
 }
 window.switchPage = switchPage;
 
-function openAzureGuide() {
-  openModal('mo-azure-guide');
-}
-window.openAzureGuide = openAzureGuide;
-
 // ── overview ──────────────────────────────────────────────────
 function statusBadge(status) {
   const ps = String(status || '-');
@@ -148,8 +144,8 @@ function renderFleetList(items) {
     list.innerHTML = `
       <div class="empty fleet-empty">
         <h3>还没有账户</h3>
-        <p>添加 Azure 账户后，这里会汇总展示全部虚拟机。</p>
-        <button class="btn btn-p" style="margin-top:8px" onclick="openAddAccount()">添加账户</button>
+        <p>绑定 Azure 账户后，这里会汇总展示全部虚拟机。</p>
+        <button class="btn btn-p" style="margin-top:8px" onclick="switchPage('accounts')">前往账户 / VM</button>
       </div>`;
     if (meta) meta.textContent = '暂无数据';
     return;
@@ -301,14 +297,14 @@ function accountCardHtml(a) {
   const title = accountDisplayName(a);
   const subName = st.subscriptionDisplayName || a.subscriptionName || '';
   const state = st.loading ? '' : (st.state ? String(st.state) : (a.subscriptionState || ''));
-  const vmCount = typeof st.vmCount === 'number' ? `${st.vmCount} 台` : (st.loading ? '… 台' : '— 台');
+  const vmCount = typeof st.vmCount === 'number' ? `${st.vmCount}` : (st.loading ? '…' : '—');
   const days = daysUntil(a.expirationDate);
   const dayCls = expiryStatClass(a.expirationDate);
-  const dayText = days === null ? '未设置到期'
+  const dayText = days === null ? '未设置'
     : days < 0 ? `已过期 ${Math.abs(days)} 天`
     : days === 0 ? '今天到期'
-    : `剩余 ${days} 天`;
-  const tip = [title, subName, state].filter(Boolean).join(' · ');
+    : `${days} 天`;
+  const tip = [title, subName, state, a.expirationDate ? `到期 ${a.expirationDate}` : ''].filter(Boolean).join(' · ');
   return `
     <div class="acc-card${S.selectedAccId === a.id ? ' selected' : ''}" data-account-id="${esc(a.id)}"
          title="${esc(tip)}" onclick='openVmView(${jsq(a.id)})'>
@@ -316,12 +312,10 @@ function accountCardHtml(a) {
       <div style="min-width:0">
         <div class="acc-name">${esc(title)}</div>
         <div class="acc-meta">
-          <strong>${esc(vmCount)}</strong>
-          <span>·</span>
+          <span>VPS:${esc(vmCount)} 台</span>
           <span class="acc-days ${dayCls}">${esc(dayText)}</span>
         </div>
       </div>
-      <button class="acc-info" type="button" data-account-detail="${esc(a.id)}" title="查看账户详情">详情</button>
     </div>`;
 }
 
@@ -403,7 +397,7 @@ function renderAccountDetailsModal(account) {
     </div>
     <div class="section-title-row" style="margin-top:16px">
       <span>成本与 AI 配额</span>
-      <span class="bgrp"><span class="muted small">更新于 ${esc(updatedAt)}</span><button class="btn btn-s btn-sm" type="button" id="btn-refresh-account-info-modal">刷新</button></span>
+      <span class="muted small">更新于 ${esc(updatedAt)}</span>
     </div>
     <div class="account-detail-grid" style="margin-top:8px">
       <div class="account-detail-item"><div class="account-detail-key">本月消费</div><div class="account-detail-value">${esc(mtd)}${esc(currency)}</div></div>
@@ -532,11 +526,7 @@ function paintAccGrid() {
     g.innerHTML = `
       <div class="empty" style="grid-column:1/-1">
         <h3>还没有 Azure 账户</h3>
-        <p>添加应用注册凭据后，即可管理该订阅下的虚拟机。</p>
-        <div class="bgrp" style="margin-top:8px;justify-content:center">
-          <button class="btn btn-s" onclick="openAzureGuide()">如何获取凭据？</button>
-          <button class="btn btn-p" onclick="openAddAccount()">添加账户</button>
-        </div>
+        <p>点击上方「+ 添加」绑定应用注册凭据，即可管理该订阅下的虚拟机。</p>
       </div>`;
     return;
   }
@@ -702,13 +692,13 @@ function renderAccountInsights(accountId) {
     ? new Date(account.costUpdatedAt).toLocaleString()
     : (loading ? '查询中…' : '尚未查询');
   host.innerHTML = `
-    <button class="insight-bar" type="button" title="查看账户详情" onclick='openAccountDetails(${jsq(accountId)})'>
+    <div class="insight-bar">
       <span class="ib"><i>AI 配额</i><b>${esc(quota)}</b></span>
       <span class="ib"><i>本月</i><b>${esc(mtdText)}</b></span>
       <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
       <span class="ib"><i>历史</i><b>${esc(historyText)}</b></span>
       <span class="ib ib-time"><i>更新</i><b>${esc(updateText)}</b></span>
-    </button>
+    </div>
     ${shortWarning ? `<div class="insight-warning">${esc(shortWarning)}</div>` : ''}`;
 }
 window.openAccountDetails = openAccountDetails;
@@ -780,7 +770,14 @@ async function openVmView(accId, e) {
   if (!acc) return;
   $('account-empty')?.classList.add('hidden');
   $('view-vms')?.classList.remove('hidden');
+
+  // 立刻清空上一个账户的数据，避免切换后长时间显示旧账户的虚拟机。
+  S.vms = [];
+  S.vmsLoading = true;
+  renderVms();
+  S.accountInsights[accId] = { ...(S.accountInsights[accId] || {}), loading: true };
   showAccountDetailFromCache(acc);
+  renderAccountInsights(accId);
   paintAccGrid();
 
   // Ensure accounts page is visible.
@@ -792,10 +789,9 @@ async function openVmView(accId, e) {
   S.activePage = 'accounts';
 
   await api('POST', '/api/session', { accountId: accId }).catch(() => {});
-  renderAccountInsights(accId);
+  // 可用区域只在创建虚拟机时才需要，不再放进切换账户的关键路径。
   await Promise.all([
     loadVms(),
-    loadRegions(),
     loadAccountStats(accId),
     loadAccountInsights(accId),
   ]);
@@ -817,12 +813,25 @@ async function refreshWorkspace() {
   toast('已刷新');
 }
 
+let vmsRequestSeq = 0;
+
 async function loadVms() {
+  const seq = (vmsRequestSeq += 1);
+  S.vmsLoading = true;
+  renderVms();
   try {
-    S.vms = await api('GET', '/api/vms');
-    renderVms();
+    const vms = await api('GET', '/api/vms');
+    if (seq !== vmsRequestSeq) return; // 已被更晚的一次切换取代
+    S.vms = vms;
   } catch (e) {
+    if (seq !== vmsRequestSeq) return;
+    S.vms = [];
     toast(`加载虚拟机失败: ${e.message}`, 'error');
+  } finally {
+    if (seq === vmsRequestSeq) {
+      S.vmsLoading = false;
+      renderVms();
+    }
   }
 }
 
@@ -876,6 +885,15 @@ function renderVms() {
   S.renderedVms = rows;
   closeVmOpsMenu(true);
 
+  if (S.vmsLoading && !S.vms.length) {
+    tb.innerHTML = `<tr><td colspan="6" style="padding:0">
+      <div class="vm-loading">
+        <span class="vm-spinner" aria-hidden="true"></span>正在加载虚拟机…
+      </div>
+    </td></tr>`;
+    return;
+  }
+
   if (!S.vms.length) {
     tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
       <div class="empty" style="border:none;background:transparent;padding:12px">
@@ -899,14 +917,14 @@ function renderVms() {
       .filter(Boolean).map(esc).join('</div><div class="vm-sub">');
     const ipSub = vm.ipAllocationMethod === 'Dynamic' ? '<div class="vm-sub">动态</div>' : '';
     return `<tr>
+      <td class="vm-status-cell">
+        <span class="dot ${dot}" role="img" aria-label="${esc(ps)}" title="${esc(ps)}"></span>
+      </td>
       <td>
         <div class="vm-name">${esc(vm.name)}</div>
         <div class="vm-sub">${esc([vm.resourceGroup, vm.location].filter(Boolean).join(' · ') || '-')}</div>
       </td>
       <td>${specs ? `<div>${specs}</div>` : '-'}</td>
-      <td class="vm-status-cell">
-        <span class="dot ${dot}" role="img" aria-label="${esc(ps)}" title="${esc(ps)}"></span>
-      </td>
       <td>
         <div>${esc(uptime.text)}</div>
         ${uptime.sub ? `<div class="vm-sub">${esc(uptime.sub)}</div>` : ''}
@@ -1083,12 +1101,6 @@ async function loadRegions() {
     sel.innerHTML = S.regions.map(r =>
       `<option value="${esc(r.name)}">${esc(r.displayName)}</option>`
     ).join('');
-    if (S.regions[0]?.name) {
-      await Promise.all([
-        loadVmSizes(S.regions[0].name),
-        loadIpPermission(S.regions[0].name),
-      ]);
-    }
   } catch { /* non-critical */ }
 }
 
@@ -1349,11 +1361,20 @@ async function submitCreateVm() {
 
 // ── add account ───────────────────────────────────────────────
 function setAddMode(mode) {
-  const isJson = mode === 'json';
-  $('add-tab-manual').classList.toggle('active', !isJson);
-  $('add-tab-json').classList.toggle('active', isJson);
-  $('add-mode-manual').classList.toggle('hidden', isJson);
-  $('add-mode-json').classList.toggle('hidden', !isJson);
+  const current = ['manual', 'json', 'guide'].includes(mode) ? mode : 'manual';
+  for (const key of ['manual', 'json', 'guide']) {
+    $(`add-tab-${key}`)?.classList.toggle('active', key === current);
+    $(`add-mode-${key}`)?.classList.toggle('hidden', key !== current);
+  }
+  // 凭据引导页不需要验证/保存按钮
+  const isGuide = current === 'guide';
+  for (const id of ['btn-check-add', 'btn-save-add', 'add-save-hint']) {
+    const el = $(id);
+    if (el) el.style.display = isGuide ? 'none' : '';
+  }
+  // 切换页签后回到弹窗顶部，避免内容长短不同导致停留在半截位置
+  const body = $('mo-add-acc')?.querySelector('.md-b');
+  if (body) body.scrollTop = 0;
 }
 
 function currentAddCredentialKey() {
@@ -1502,8 +1523,9 @@ function ensureCredentialsFromJsonIfNeeded() {
 
 function openAddAccount() {
   resetAddForm();
+  setAddMode('manual');
   openModal('mo-add-acc');
-  setTimeout(() => ($('add-cid') || $('add-json'))?.focus(), 50);
+  setTimeout(() => $('add-cid')?.focus(), 50);
 }
 window.openAddAccount = openAddAccount;
 
@@ -1835,7 +1857,7 @@ function showApp() {
 
 function bindUI() {
   // Event delegation keeps nav/toggle working even if individual bindings fail.
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const t = e.target;
     if (!(t instanceof Element)) return;
 
@@ -1901,11 +1923,6 @@ function bindUI() {
 
     if (t.closest('#btn-logout')) return void doLogout();
     if (t.closest('#login-btn')) return void doLogin();
-    if (t.closest('#btn-guide-to-add')) {
-      closeModal('mo-azure-guide');
-      openAddAccount();
-      return;
-    }
     if (t.closest('#btn-back-accounts')) return void backToAccountList();
     if (t.closest('#btn-create-vm')) {
       // Restore safe defaults each time the dialog opens.
@@ -1922,6 +1939,7 @@ function bindUI() {
       if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = false;
       if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = false;
       openModal('mo-create-vm');
+      if (!S.regions.length) await loadRegions();
       const loc = $('create-region')?.value || S.regions[0]?.name || '';
       if (loc) {
         loadVmSizes(loc, 'Standard_B1s');
@@ -1931,7 +1949,6 @@ function bindUI() {
     }
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
-    if (t.closest('#btn-refresh-account-info-modal')) return void refreshAccountInfo(S.selectedAccId).then(() => toast('账户信息已刷新'));
     if (t.closest('#btn-account-details')) return void openAccountDetails(S.selectedAccId);
     if (t.closest('#btn-toggle-account-secret')) return void toggleAccountSecret();
     if (t.closest('#btn-copy-account-secret')) return void copyAccountSecret();
@@ -1991,13 +2008,6 @@ function bindUI() {
 
   const accGrid = $('acc-grid');
   if (accGrid) {
-    accGrid.addEventListener('click', (e) => {
-      const btn = e.target instanceof Element ? e.target.closest('[data-account-detail]') : null;
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openAccountDetails(btn.getAttribute('data-account-detail'));
-    }, true);
     accGrid.addEventListener('dragstart', (e) => {
       const handle = e.target instanceof Element ? e.target.closest('.acc-drag') : null;
       const card = handle?.closest('.acc-card');

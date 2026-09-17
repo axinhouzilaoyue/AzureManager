@@ -26,7 +26,7 @@ import {
 } from "./lib/db";
 import { startChangeIp, startCreateVm, startVmLifecycle } from "./lib/background";
 import { AzureArmClient } from "./lib/azure/client";
-import { listVirtualMachines, listVmSizes } from "./lib/azure/compute";
+import { countVirtualMachines, listVirtualMachines, listVmSizes } from "./lib/azure/compute";
 import { CostQueryError, getAzureCosts, getQuotaTier } from "./lib/azure/cost";
 import { getIpPermission } from "./lib/azure/network";
 import { getSubscriptionDetails, listSubscriptionLocations, registerRequiredProviders } from "./lib/azure/subscription";
@@ -469,13 +469,14 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       void registerRequiredProviders(client, account.subscriptionId).catch((error) => {
         console.warn("Provider registration skipped", account.id, error);
       });
+      // 概览只需要台数与订阅信息，用轻量计数代替完整 VM 列表（后者要为每台 VM 拉取详情）。
       const [subResult, vmsResult, quotaResult] = await Promise.allSettled([
         getSubscriptionDetails(client, account.subscriptionId),
-        listVirtualMachines(client, account.subscriptionId),
+        countVirtualMachines(client, account.subscriptionId),
         getQuotaTier(client, account.subscriptionId),
       ]);
       const sub = subResult.status === "fulfilled" ? subResult.value : null;
-      const vms = vmsResult.status === "fulfilled" ? vmsResult.value : [];
+      const vmCount = vmsResult.status === "fulfilled" ? vmsResult.value : null;
       const quotaTier = quotaResult.status === "fulfilled"
         ? quotaResult.value
         : (account.quotaTier ?? "未获取");
@@ -489,7 +490,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
         id: account.id,
         subscriptionDisplayName: sub?.displayName ?? account.subscriptionName ?? account.subscriptionId,
         state: sub?.state ?? account.subscriptionState ?? "Unknown",
-        vmCount: vms.length,
+        vmCount: vmCount ?? 0,
         quotaTier,
         vmError: vmsResult.status === "rejected"
           ? (vmsResult.reason instanceof Error ? vmsResult.reason.message : String(vmsResult.reason))
