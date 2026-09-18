@@ -347,13 +347,12 @@ function accountCardHtml(a) {
   const title = accountDisplayName(a);
   const subName = st.subscriptionDisplayName || a.subscriptionName || '';
   const state = st.loading ? '' : (st.state ? String(st.state) : (a.subscriptionState || ''));
-  const vmCount = typeof st.vmCount === 'number' ? `${st.vmCount}` : (st.loading ? '…' : '—');
   const days = daysUntil(a.expirationDate);
   const dayCls = expiryStatClass(a.expirationDate);
-  const dayText = days === null ? '未设置'
+  const dayText = days === null ? '未设置到期日'
     : days < 0 ? `已过期 ${Math.abs(days)} 天`
     : days === 0 ? '今天到期'
-    : `${days} 天`;
+    : `剩余 ${days} 天`;
   const tip = [title, subName, state, a.expirationDate ? `到期 ${a.expirationDate}` : ''].filter(Boolean).join(' · ');
   return `
     <div class="acc-card${S.selectedAccId === a.id ? ' selected' : ''}" data-account-id="${esc(a.id)}"
@@ -362,7 +361,6 @@ function accountCardHtml(a) {
       <div style="min-width:0">
         <div class="acc-name">${esc(title)}</div>
         <div class="acc-meta">
-          <span>VPS:${esc(vmCount)} 台</span>
           <span class="acc-days ${dayCls}">${esc(dayText)}</span>
         </div>
       </div>
@@ -416,7 +414,6 @@ function renderAccountDetailsModal(account) {
   const currency = detail.costCurrency ? ` ${detail.costCurrency}` : '';
   const mtd = detail.costMtd ?? '未获取';
   const acc = detail.costAcc ?? '未获取';
-  const history = detail.costHistory ?? '未获取';
   const updatedAt = detail.costUpdatedAt ? new Date(detail.costUpdatedAt).toLocaleString() : '未查询';
   const rawWarning = detail.costWarning || '';
   const warning = rawWarning.length > 180 ? `${rawWarning.slice(0, 180)}…` : rawWarning;
@@ -456,8 +453,7 @@ function renderAccountDetailsModal(account) {
     <div class="account-detail-grid" style="margin-top:8px">
       <div class="account-detail-item"><div class="account-detail-key">本月消费</div><div class="account-detail-value">${esc(mtd)}${esc(currency)}</div></div>
       <div class="account-detail-item"><div class="account-detail-key">累计消费</div><div class="account-detail-value">${esc(acc)}${esc(currency)}</div></div>
-      <div class="account-detail-item"><div class="account-detail-key">历史消费</div><div class="account-detail-value">${esc(history)}${esc(currency)}</div></div>
-      <div class="account-detail-item"><div class="account-detail-key">AI 配额层级</div><div class="account-detail-value">${esc(detail.quotaTier || '未获取')}</div></div>
+      <div class="account-detail-item" style="grid-column:1/-1"><div class="account-detail-key">AI 配额层级</div><div class="account-detail-value">${esc(detail.quotaTier || '未获取')}</div></div>
     </div>
     ${warning ? `<div class="err-box" style="margin-top:10px">${esc(warning)}</div>` : ''}`;
 }
@@ -796,7 +792,6 @@ function renderAccountInsights(accountId) {
   const unit = currency ? ` ${currency}` : '';
   const mtd = data.mtd ?? account?.costMtd;
   const acc = data.acc ?? account?.costAcc;
-  const history = data.history ?? account?.costHistory;
   const quota = data.quotaTier || account?.quotaTier || '未获取';
   const notice = insightNotice?.accountId === accountId ? insightNotice.message : '';
   const mtdText = mtd !== null && mtd !== undefined && mtd !== ''
@@ -804,9 +799,6 @@ function renderAccountInsights(accountId) {
     : (loading || '未获取');
   const accText = acc !== null && acc !== undefined && acc !== ''
     ? `${acc}${unit}`
-    : '未获取';
-  const historyText = history !== null && history !== undefined && history !== ''
-    ? `${history}${unit}`
     : '未获取';
   const updateText = account?.costUpdatedAt
     ? new Date(account.costUpdatedAt).toLocaleString()
@@ -816,10 +808,9 @@ function renderAccountInsights(accountId) {
       <span class="ib"><i>AI 配额</i><b>${esc(quota)}</b></span>
       <span class="ib"><i>本月</i><b>${esc(mtdText)}</b></span>
       <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
-      <span class="ib"><i>历史</i><b>${esc(historyText)}</b></span>
       <span class="ib ib-time"><i>消费更新</i><b>${esc(updateText)}</b></span>
       <button class="ib-refresh${S.summaryRefreshing ? ' spinning' : ''}" type="button" id="btn-refresh-summary"
-              title="刷新 AI 配额、本月/累计/历史消费" aria-label="刷新 AI 配额与消费"
+              title="刷新 AI 配额与本月/累计消费" aria-label="刷新 AI 配额与消费"
               ${S.summaryRefreshing ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.64-6.36" />
@@ -1415,16 +1406,64 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
 async function loadRegions() {
   const accId = S.selectedAccId;
   if (!accId) return;
+  const sel = $('create-region');
+  const hint = $('create-region-hint');
+  const baseHint = '只列出当前订阅可实际创建虚拟机的区域（已排除地理组，并遵循订阅上的 Azure Policy 区域限制）。';
+  const previous = sel?.value || '';
+  if (sel) {
+    sel.disabled = true;
+    sel.innerHTML = `<option value="">加载区域中…</option>`;
+  }
+  if (hint) hint.textContent = '正在读取订阅可用的区域…';
   try {
-    const regions = await api('GET', '/api/regions');
+    const payload = await api('GET', '/api/regions');
     if (accId !== S.selectedAccId) return;
-    S.regions = Array.isArray(regions) ? regions : [];
-    const sel = $('create-region');
+    // The endpoint echoes the account it answered for; drop a stale reply.
+    if (payload?.accountId && payload.accountId !== accId) return;
+    const regions = Array.isArray(payload?.items) ? payload.items : [];
+    S.regions = regions;
     if (!sel) return;
-    sel.innerHTML = S.regions.map(r =>
+    if (!regions.length) {
+      sel.innerHTML = `<option value="">无可创建虚拟机的区域</option>`;
+      sel.disabled = true;
+      if (hint) {
+        hint.textContent = payload?.warning
+          ? `未获取到可用区域：${payload.warning}`
+          : '订阅下没有可用的区域，请检查订阅状态与 Azure Policy 区域限制。';
+      }
+      return;
+    }
+    sel.innerHTML = regions.map(r =>
       `<option value="${esc(r.name)}">${esc(r.displayName)}</option>`
     ).join('');
-  } catch { /* non-critical */ }
+    sel.disabled = false;
+    // Preserve the previous choice when it is still allowed, so a rerun of this
+    // loader does not silently move the target region.
+    if (previous && regions.some((r) => r.name === previous)) sel.value = previous;
+    if (hint) hint.textContent = describeRegionFilter(payload, regions.length, baseHint);
+  } catch (e) {
+    if (accId !== S.selectedAccId) return;
+    S.regions = [];
+    if (sel) {
+      sel.innerHTML = `<option value="">区域加载失败</option>`;
+      sel.disabled = true;
+    }
+    if (hint) hint.textContent = `区域加载失败：${e.message}。请刷新后重试，避免在未知区域上创建虚拟机。`;
+  }
+}
+
+/** Explains what the region list left out, so a filtered list is never a mystery. */
+function describeRegionFilter(payload, count, fallback) {
+  const parts = [];
+  const policyExcluded = payload?.excludedByPolicy?.length ?? 0;
+  const nonPhysical = payload?.excludedNonPhysical?.length ?? 0;
+  const notDeployable = payload?.excludedNotDeployable?.length ?? 0;
+  if (policyExcluded) parts.push(`Policy 禁止 ${policyExcluded} 个`);
+  if (nonPhysical) parts.push(`非物理区域 ${nonPhysical} 个`);
+  if (notDeployable) parts.push(`不支持 Compute ${notDeployable} 个`);
+  const suffix = parts.length ? `已排除：${parts.join('、')}。` : '';
+  const warn = payload?.warning ? `⚠ ${payload.warning}。` : '';
+  return `${count} 个可用区域。${suffix}${warn}${fallback}`;
 }
 
 async function loadIpPermission(location) {

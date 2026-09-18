@@ -187,6 +187,22 @@ async function main(): Promise<void> {
     const cardCount = await page.$$eval(".acc-card", (els: any[]) => els.length);
     check("both accounts are listed", cardCount === 2, `cardCount=${cardCount}`);
 
+    // The row is deliberately minimal: account email plus remaining days only.
+    // The VM count ("VPS:n 台") used to sit here and must not come back.
+    const rowText = await page.evaluate(() => {
+      const card = document.querySelector(".acc-card");
+      return {
+        name: card?.querySelector(".acc-name")?.textContent?.trim() ?? "",
+        meta: card?.querySelector(".acc-meta")?.textContent?.trim() ?? "",
+      };
+    });
+    check("an account row keeps its identity line", rowText.name.length > 0, JSON.stringify(rowText));
+    check(
+      "an account row no longer shows a VM count",
+      !/VPS/i.test(rowText.meta) && !/台/.test(rowText.meta),
+      JSON.stringify(rowText),
+    );
+
     const clickAccount = async (accountId: string) => {
       await page.evaluate((id: string) => {
         const card = document.querySelector(`.acc-card[data-account-id="${id}"]`) as HTMLElement | null;
@@ -394,14 +410,25 @@ async function main(): Promise<void> {
       const cells = [...document.querySelectorAll("#account-insights .ib")];
       const pick = (label: string) =>
         cells.find((c) => c.querySelector("i")?.textContent === label)?.querySelector("b")?.textContent ?? "";
-      return { mtd: pick("本月"), acc: pick("累计"), history: pick("历史"), updated: pick("消费更新") };
+      return {
+        labels: cells.map((c) => c.querySelector("i")?.textContent ?? ""),
+        mtd: pick("本月"),
+        acc: pick("累计"),
+        history: pick("历史"),
+        updated: pick("消费更新"),
+      };
     });
     console.log(`  cost cells after refresh: ${JSON.stringify(costCell)}`);
     check("month-to-date has a value after refresh", costCell.mtd.length > 0 && costCell.mtd !== "查询中…",
       JSON.stringify(costCell));
-    check("accumulated and history have values after refresh",
-      costCell.acc !== "查询中…" && costCell.acc !== "未获取" && costCell.history !== "查询中…",
+    check("accumulated spend has a value after refresh",
+      costCell.acc !== "查询中…" && costCell.acc !== "未获取",
       JSON.stringify(costCell));
+    check(
+      "the redundant 历史 cell is gone (quota + month + accumulated + timestamp only)",
+      costCell.labels.join(",") === "AI 配额,本月,累计,消费更新",
+      JSON.stringify(costCell.labels),
+    );
     check("the cost timestamp is a real timestamp (not a loading placeholder)",
       /\d/.test(costCell.updated) && costCell.updated !== "查询中…" && costCell.updated !== "尚未查询",
       JSON.stringify(costCell));
@@ -486,7 +513,51 @@ async function main(): Promise<void> {
     const cardsAfterBulk = await page.$$eval(".acc-card", (els: any[]) => els.length);
     check("the account list still renders after a bulk refresh", cardsAfterBulk === 2, `cards=${cardsAfterBulk}`);
 
-    section("8. Layout screenshots for manual review");
+    section("8. The create-VM region picker reports what it resolved");
+
+    // The mock ARM has no locations, so this exercises the failure path: the
+    // dialog used to sit on "加载中..." forever and silently submit an empty
+    // region. It must now say so instead.
+    await clickAccount(ACCOUNT_B_ID);
+    await page.click("#btn-create-vm");
+    await page.waitForSelector("#mo-create-vm:not(.hidden)", { timeout: 10000 });
+    await page.waitForFunction(
+      () => !/正在读取/.test(document.getElementById("create-region-hint")?.textContent ?? ""),
+      { timeout: 20000 },
+    );
+    const regionState = await page.evaluate(() => {
+      const select = document.getElementById("create-region") as HTMLSelectElement | null;
+      return {
+        hint: document.getElementById("create-region-hint")?.textContent ?? "",
+        options: [...(select?.options ?? [])].map((option) => option.textContent ?? ""),
+      };
+    });
+    console.log(`  create-vm region state: ${JSON.stringify(regionState)}`);
+    check(
+      "the region picker does not stay stuck on a loading placeholder",
+      !regionState.options.some((text) => text.includes("加载中")),
+      JSON.stringify(regionState.options),
+    );
+    check(
+      "an unusable region list is explained to the user",
+      /没有可用的区域|无可创建|加载失败|未获取到可用区域/.test(`${regionState.hint} ${regionState.options.join(" ")}`),
+      JSON.stringify(regionState),
+    );
+    check(
+      "the explanation names the subscription/Policy limits it honours",
+      /Policy|策略|订阅/.test(regionState.hint),
+      JSON.stringify(regionState.hint),
+    );
+    // Toasts stack over the top-right corner where the modal's close button sits,
+    // so wait for the previous section's toasts to expire before clicking it.
+    await page.waitForFunction(
+      () => document.querySelectorAll("#tc .toast").length === 0,
+      { timeout: 10000 },
+    );
+    await page.click("#mo-create-vm .md-x");
+    await page.waitForSelector("#mo-create-vm.hidden", { timeout: 10000 });
+
+    section("9. Layout screenshots for manual review");
 
     await clickAccount(ACCOUNT_B_ID);
     await page.waitForFunction(

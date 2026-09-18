@@ -39,7 +39,7 @@ import {
 } from "./lib/azure/token-cache";
 import { CostQueryError, getAzureCosts, getQuotaTier } from "./lib/azure/cost";
 import { getIpPermission } from "./lib/azure/network";
-import { getSubscriptionDetails, listSubscriptionLocations, registerRequiredProviders } from "./lib/azure/subscription";
+import { getSubscriptionDetails, listDeployableLocations, registerRequiredProviders } from "./lib/azure/subscription";
 import {
   accountCheckSchema,
   changeIpSchema,
@@ -556,14 +556,14 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       };
       const client = new AzureArmClient(ENV, tempAccount);
       const sub = await getSubscriptionDetails(client, body.subscriptionId);
-      const [regions, providerWarnings] = await Promise.all([
-        listSubscriptionLocations(client, body.subscriptionId),
+      const [regionListing, providerWarnings] = await Promise.all([
+        listDeployableLocations(client, body.subscriptionId),
         registerRequiredProviders(client, body.subscriptionId),
       ]);
       return jsonResponse({
         subscriptionDisplayName: sub.displayName,
         state: sub.state,
-        availableRegionCount: regions.length,
+        availableRegionCount: regionListing.locations.length,
         warnings: providerWarnings,
         checkedAt: new Date().toISOString(),
       });
@@ -708,8 +708,8 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       const account = await getDecryptedAccountOrThrow(ENV, checkMatch[1]);
       const client = new AzureArmClient(ENV, account);
       const sub = await getSubscriptionDetails(client, account.subscriptionId);
-      const [regions, quotaTier, providerWarnings] = await Promise.all([
-        listSubscriptionLocations(client, account.subscriptionId),
+      const [regionListing, quotaTier, providerWarnings] = await Promise.all([
+        listDeployableLocations(client, account.subscriptionId),
         getQuotaTier(client, account.subscriptionId),
         registerRequiredProviders(client, account.subscriptionId),
       ]);
@@ -722,7 +722,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
       return jsonResponse({
         subscriptionDisplayName: sub.displayName,
         state: sub.state,
-        availableRegionCount: regions.length,
+        availableRegionCount: regionListing.locations.length,
         warnings: providerWarnings,
         quotaTier,
         checkedAt: new Date().toISOString(),
@@ -978,8 +978,12 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   if (req.method === "GET" && url.pathname === "/api/regions") {
     const account = await getDecryptedAccountOrThrow(ENV, selectedId);
     const client = new AzureArmClient(ENV, account);
-    const regions = await listSubscriptionLocations(client, account.subscriptionId);
-    return jsonResponse(regions.sort((a, b) => a.displayName.localeCompare(b.displayName)));
+    // Returns the deployable regions *and* why others were dropped, so the
+    // create-VM dialog can show what the subscription/policy actually allows
+    // instead of silently offering regions that cannot be used.
+    const listing = await listDeployableLocations(client, account.subscriptionId);
+    const { locations, ...filterMeta } = listing;
+    return jsonResponse({ accountId: account.id, items: locations, ...filterMeta });
   }
 
   if (req.method === "GET" && url.pathname === "/api/ip-permission") {

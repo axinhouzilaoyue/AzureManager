@@ -6,7 +6,8 @@
     "dev": "bun --watch src/server.ts",
     "start": "bun src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun tests/switch-race.ts && bun tests/switch-ui.ts",
+    "test": "bun tests/regions.ts && bun tests/switch-race.ts && bun tests/switch-ui.ts",
+    "test:regions": "bun tests/regions.ts",
     "test:api": "bun tests/switch-race.ts",
     "test:ui": "bun tests/switch-ui.ts"
   },
