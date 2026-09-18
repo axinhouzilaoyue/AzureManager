@@ -72,6 +72,8 @@ type PolicyFixture = {
 };
 
 let policyAssignments: PolicyFixture[] = [];
+let policyHttpStatus = 200;
+const policyApiVersions: string[] = [];
 
 function policyAssignmentList(): { value: PolicyFixture[] } {
   return { value: policyAssignments };
@@ -82,8 +84,8 @@ const server = Bun.serve({
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
-    const json = (body: unknown) =>
-      new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
     if (req.method === "POST" && path.endsWith("/oauth2/v2.0/token")) {
       return json({ token_type: "Bearer", expires_in: 3600, access_token: "fake-token" });
@@ -91,6 +93,10 @@ const server = Bun.serve({
     if (path === `/subscriptions/${SUB}/locations`) return json(LOCATIONS);
     if (path === `/subscriptions/${SUB}/providers/Microsoft.Compute`) return json(COMPUTE_PROVIDER);
     if (path === `/subscriptions/${SUB}/providers/Microsoft.Authorization/policyAssignments`) {
+      policyApiVersions.push(url.searchParams.get("api-version") ?? "");
+      if (policyHttpStatus !== 200) {
+        return json({ error: { code: "Forbidden" } }, policyHttpStatus);
+      }
       return json(policyAssignmentList());
     }
     return json({ value: [] });
@@ -259,6 +265,35 @@ async function main(): Promise<void> {
       JSON.stringify(names(result.locations)),
     );
     check("nothing is counted", result.policyAssignments === 0, String(result.policyAssignments));
+
+    console.log("\n\x1b[1m7. Policy API version and permission misses\x1b[0m");
+    check(
+      "policy assignments are queried with 2020-09-01, not the Role Assignments version",
+      policyApiVersions.length > 0 && policyApiVersions.every((version) => version === "2020-09-01"),
+      JSON.stringify(policyApiVersions),
+    );
+
+    policyAssignments = [];
+    policyHttpStatus = 403;
+    result = await resolve();
+    check(
+      "403 Policy Reader miss does not hide regions",
+      names(result.locations).join(",") === "brazilsouth,eastasia,eastus,francecentral,japaneast,westus2",
+      JSON.stringify(names(result.locations)),
+    );
+    check("403 is not reported as a policy read failure", result.warning === null, String(result.warning));
+    check("policyReadFailed is false on 403", result.policyReadFailed === false, String(result.policyReadFailed));
+
+    policyHttpStatus = 500;
+    result = await resolve();
+    check(
+      "unexpected policy errors still offer the Compute-filtered list",
+      names(result.locations).join(",") === "brazilsouth,eastasia,eastus,francecentral,japaneast,westus2",
+      JSON.stringify(names(result.locations)),
+    );
+    check("unexpected policy errors are explained", Boolean(result.warning), String(result.warning));
+    check("policyReadFailed is true on 500", result.policyReadFailed === true, String(result.policyReadFailed));
+    policyHttpStatus = 200;
   } finally {
     server.stop(true);
     resetAzureTokenCache();

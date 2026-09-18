@@ -50,6 +50,8 @@ export interface AzureLocationListing {
   excludedByPolicy: string[];
   /** Enforced "allowed locations" assignments that produced a restriction. */
   policyAssignments: number;
+  /** True when policy assignments could not be read (not a 401/403 permission miss). */
+  policyReadFailed: boolean;
   /** Non-blocking diagnostics (provider/policy read failures, empty results). */
   warning: string | null;
 }
@@ -150,6 +152,9 @@ async function listDeployableRegionKeys(
 
   const keys = new Set<string>();
   for (const resourceType of response.resourceTypes ?? []) {
+    // Only virtualMachines — disks/snapshots/etc. can list regions where a VM
+    // cannot actually be created.
+    if ((resourceType.resourceType ?? "").toLowerCase() !== "virtualmachines") continue;
     for (const location of resourceType.locations ?? []) {
       if (typeof location === "string" && location.trim()) {
         keys.add(normalizeLocationKey(location));
@@ -176,11 +181,22 @@ async function listDeployableRegionKeys(
 async function collectPolicyAllowedLocations(
   client: AzureArmClient,
   subscriptionId: string,
-): Promise<{ allowed: Set<string> | null; assignments: number }> {
-  const assignments = await client.paginate<PolicyAssignment>(
-    `/subscriptions/${subscriptionId}/providers/Microsoft.Authorization/policyAssignments`,
-    AZURE_API_VERSIONS.authorization,
-  );
+): Promise<{ allowed: Set<string> | null; assignments: number; failed: boolean }> {
+  let assignments: PolicyAssignment[];
+  try {
+    assignments = await client.paginate<PolicyAssignment>(
+      `/subscriptions/${subscriptionId}/providers/Microsoft.Authorization/policyAssignments`,
+      AZURE_API_VERSIONS.policyAssignments,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // VM-operator principals often lack Policy Reader. CloudManager treats this
+    // as "no restriction" and still offers the Compute-filtered region list.
+    if (/azure_arm_request_failed:(401|403)\b/.test(message)) {
+      return { allowed: null, assignments: 0, failed: false };
+    }
+    return { allowed: null, assignments: 0, failed: true };
+  }
 
   const sets: Set<string>[] = [];
 
@@ -202,13 +218,13 @@ async function collectPolicyAllowedLocations(
     sets.push(new Set(values.map(normalizeLocationKey).filter(Boolean)));
   }
 
-  if (!sets.length) return { allowed: null, assignments: 0 };
+  if (!sets.length) return { allowed: null, assignments: 0, failed: false };
 
   const allowed = sets.reduce((intersection, current) => {
     return new Set([...intersection].filter((value) => current.has(value)));
   });
 
-  return { allowed, assignments: sets.length };
+  return { allowed, assignments: sets.length, failed: false };
 }
 
 /** Resolves the policy effect, which may be a bare string or `{ value: ... }`. */
@@ -224,16 +240,20 @@ function readEffect(parameters: Record<string, unknown>): string | null {
 /**
  * Finds the "allowed locations" list inside an assignment's parameters.
  *
- * The parameter is `listOfAllowedLocations` on the built-in policy and
- * initiative, but custom policies are free to name it differently, so any
- * location/region-shaped parameter holding a string list is accepted.
+ * The built-in policy/initiative uses `listOfAllowedLocations`; custom policies
+ * often use `allowedLocations`. Deny-lists are ignored so they cannot invert
+ * the restriction.
  */
 function readAllowedLocationValues(parameters: Record<string, unknown>): string[] | null {
   const entries = Object.entries(parameters);
-  const named = entries.filter(([key]) => /(allowed|list|permitted|restricted).*(location|region)/i.test(key));
-  const loose = entries.filter(([key]) => /(location|region)/i.test(key) && !/effect/i.test(key));
+  // Built-in policy uses listOfAllowedLocations; custom policies often use
+  // allowedLocations. Do not match deny-lists (listOfDeniedLocations) — that
+  // would invert the restriction.
+  const named = entries.filter(([key]) =>
+    /^(listof)?allowed(locations?|regions?)$/i.test(key.replace(/[^a-zA-Z]/g, "")),
+  );
 
-  for (const [, raw] of [...named, ...loose]) {
+  for (const [, raw] of named) {
     const value = unwrapPolicyValue(raw);
     if (Array.isArray(value)) {
       const list = value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
@@ -285,7 +305,11 @@ export async function listDeployableLocations(
       { apiVersion: AZURE_API_VERSIONS.subscriptions },
     ),
     listDeployableRegionKeys(client, subscriptionId).catch(() => null),
-    collectPolicyAllowedLocations(client, subscriptionId).catch(() => null),
+    collectPolicyAllowedLocations(client, subscriptionId).catch(() => ({
+      allowed: null,
+      assignments: 0,
+      failed: true,
+    })),
   ]);
 
   const raw = response.value ?? [];
@@ -320,7 +344,7 @@ export async function listDeployableLocations(
     : deployable;
 
   const warnings: string[] = [];
-  if (!allowed && policy === null) {
+  if (policy.failed) {
     warnings.push("策略读取失败，未能校验区域限制");
   } else if (allowed && !locations.length && raw.length) {
     warnings.push("当前订阅的策略不允许任何区域");
@@ -332,7 +356,8 @@ export async function listDeployableLocations(
     excludedNonPhysical,
     excludedNotDeployable,
     excludedByPolicy,
-    policyAssignments: policy?.assignments ?? 0,
+    policyAssignments: policy.assignments,
+    policyReadFailed: policy.failed,
     warning: warnings.length ? warnings.join("；") : null,
   };
 }

@@ -4,7 +4,10 @@ export const AZURE_API_VERSIONS = {
   providers: "2021-04-01",
   compute: "2025-04-01",
   network: "2024-10-01",
-  authorization: "2022-04-01",
+  // Policy Assignments. 2022-04-01 is the Role Assignments version and is NOT
+  // registered for policyAssignments (ARM returns NoRegisteredProviderFound).
+  // 2020-09-01 is what CloudManager uses and is in the supported set.
+  policyAssignments: "2020-09-01",
   costManagement: "2023-11-01",
   cognitiveServices: "2025-10-01-preview",
 } as const;
