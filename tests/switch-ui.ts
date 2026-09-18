@@ -329,6 +329,8 @@ async function main(): Promise<void> {
         name: name?.textContent?.trim() ?? "",
         region: row.querySelector(".vm-region")?.textContent?.trim() ?? "",
         kvLabels,
+        hasSize: Boolean(row.querySelector(".vm-kv.size")),
+        hasIp: Boolean(row.querySelector(".vm-kv.ip")),
         hasRail: Boolean(row.querySelector(".vm-rail")),
         triggerOnLine1: Boolean(trigger),
         triggerText: trigger?.textContent?.trim() ?? "",
@@ -347,14 +349,14 @@ async function main(): Promise<void> {
     check("状态 is shown as text, not colour alone", /运行中|已停止|停止中|启动中|创建中|未知/.test(rowShape?.statusText ?? ""), String(rowShape?.statusText));
     check("名称 is present", (rowShape?.name ?? "").length > 0, String(rowShape?.name));
     check(
-      "区域 sits next to the name, not as a resource-group chip",
-      rowShape?.region === "eastus",
-      JSON.stringify(rowShape?.region),
+      "区域 sits on the second line as a value, not a caption",
+      rowShape?.region === "eastus" && (rowShape?.kvLabels ?? []).length === 0,
+      JSON.stringify({ region: rowShape?.region, kvLabels: rowShape?.kvLabels }),
     );
     check(
-      "the second line carries 规格 / 开机 / 公网 IP labels",
-      ["规格", "开机时间", "公网 IP"].every((label) => (rowShape?.kvLabels ?? []).includes(label)),
-      JSON.stringify(rowShape?.kvLabels),
+      "the second line has size and IP values without labels",
+      rowShape?.hasSize === true && rowShape?.hasIp === true && (rowShape?.kvLabels ?? []).length === 0,
+      JSON.stringify(rowShape),
     );
     check("there is no dedicated operations column", rowShape?.hasRail === false, JSON.stringify(rowShape));
     check(
@@ -591,7 +593,8 @@ async function main(): Promise<void> {
       JSON.stringify(costCell.labels),
     );
     check("the cost timestamp is a real timestamp (not a loading placeholder)",
-      /\d/.test(costCell.updated) && costCell.updated !== "查询中…" && costCell.updated !== "尚未查询",
+      /\d/.test(costCell.updated) && /\//.test(costCell.updated)
+        && costCell.updated !== "查询中…" && costCell.updated !== "尚未查询",
       JSON.stringify(costCell));
     check(
       "numeric costs render with two decimal places",
@@ -651,8 +654,9 @@ async function main(): Promise<void> {
     });
     check("a refresh-all-accounts button exists", allBtn !== null);
     check("it sits in the account pane header", allBtn?.inPaneHead === true, JSON.stringify(allBtn));
-    check("it is icon-only and labelled", allBtn?.hasSvg === true && allBtn?.hasText === false
-      && (allBtn?.label ?? "").length > 0, JSON.stringify(allBtn));
+    check("it is a labelled button", allBtn?.hasText === true && /刷新全部/.test(
+      `${allBtn?.title ?? ""} ${allBtn?.label ?? ""}`),
+      JSON.stringify(allBtn));
 
     seenUrls.length = 0;
     await page.click("#btn-refresh-all-accounts");
@@ -700,13 +704,16 @@ async function main(): Promise<void> {
     await page.click("#btn-create-vm");
     await page.waitForSelector("#mo-create-vm:not(.hidden)", { timeout: 10000 });
     await page.waitForFunction(
-      () => !/正在读取/.test(document.getElementById("create-region-hint")?.textContent ?? ""),
+      () => {
+        const select = document.getElementById("create-region") as HTMLSelectElement | null;
+        const texts = [...(select?.options ?? [])].map((option) => option.textContent ?? "");
+        return texts.length > 0 && !texts.some((text) => /加载中|加载区域/.test(text));
+      },
       { timeout: 20000 },
     );
     const regionState = await page.evaluate(() => {
       const select = document.getElementById("create-region") as HTMLSelectElement | null;
       return {
-        hint: document.getElementById("create-region-hint")?.textContent ?? "",
         options: [...(select?.options ?? [])].map((option) => option.textContent ?? ""),
       };
     });
@@ -718,13 +725,8 @@ async function main(): Promise<void> {
     );
     check(
       "an unusable region list is explained to the user",
-      /没有可用的区域|无可创建|加载失败|未获取到可用区域/.test(`${regionState.hint} ${regionState.options.join(" ")}`),
+      /没有可用的区域|无可创建|加载失败|未获取到可用区域/.test(regionState.options.join(" ")),
       JSON.stringify(regionState),
-    );
-    check(
-      "the explanation names the subscription/Policy limits it honours",
-      /Policy|策略|订阅/.test(regionState.hint),
-      JSON.stringify(regionState.hint),
     );
     await page.click("#mo-create-vm .md-x");
     await page.waitForSelector("#mo-create-vm.hidden", { timeout: 10000 });

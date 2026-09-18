@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Azure Manager</title>
-  <link rel="icon" href="data:," />
+  <link rel="icon" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsYQJ62ZWymNgjtplmh_exEK3yrVnfelJ68EgmjTTQqw&amp;s" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -122,6 +122,10 @@
     .fi-sm { padding: 7px 10px; font-size: 12.5px; }
     .fhint { font-size: 12px; color: var(--text-2); line-height: 1.5; }
     .frow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .create-auth {
+      margin-top: 6px; padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
     @media (max-width: 720px) { .frow { grid-template-columns: 1fr; } }
 
     .err-box, .ok-box {
@@ -164,10 +168,10 @@
     }
     .login-inner { width: min(100%, 380px); display: flex; flex-direction: column; gap: 22px; }
     .login-mark {
-      width: 48px; height: 48px; border-radius: var(--r);
-      display: grid; place-items: center;
-      background: linear-gradient(135deg, #1783ff, #0b5fbf); color: #fff;
+      width: 48px; height: 48px; border-radius: var(--r); overflow: hidden;
+      display: grid; place-items: center; background: var(--bg-soft);
     }
+    .login-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .login-h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-top: 12px; }
     .login-sub { margin-top: 4px; color: var(--text-2); font-size: 13px; }
     .login-card {
@@ -210,10 +214,10 @@
       padding: 18px 14px; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
     }
     .sb-logo {
-      width: 32px; height: 32px; border-radius: var(--r); flex-shrink: 0;
-      display: grid; place-items: center;
-      background: var(--accent-text); color: #fff;
+      width: 32px; height: 32px; border-radius: var(--r); flex-shrink: 0; overflow: hidden;
+      background: var(--bg-soft);
     }
+    .sb-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .sb-name { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
     .sb-sec { padding: 12px 8px; flex: 1; }
     .sb-lbl {
@@ -259,7 +263,11 @@
 
     .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; position: relative; z-index: 1; }
     .page { padding: 28px clamp(18px, 3vw, 40px) 40px; max-width: 1180px; }
-    #pg-accounts { max-width: none; padding-top: 18px; padding-left: clamp(14px, 1.6vw, 22px); padding-right: clamp(14px, 1.6vw, 22px); }
+    #pg-accounts {
+      max-width: none; height: 100%; overflow: hidden;
+      display: flex; flex-direction: column;
+      padding: 52px clamp(16px, 1.8vw, 28px) 18px;
+    }
     .page.hidden { display: none !important; }
 
     .page-head {
@@ -326,10 +334,10 @@
     }
 
     /* 账户列表：单行紧凑卡片，仅展示邮箱 / VM 台数 / 剩余天数 */
-    .acc-grid { display: grid; grid-template-columns: 1fr; gap: 4px; }
+    .acc-grid { display: grid; grid-template-columns: 1fr; gap: 2px; align-content: start; }
     .acc-card {
       display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center;
-      gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+      gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer;
       border: 1px solid transparent; background: transparent;
       transition: background var(--t), border-color var(--t);
     }
@@ -356,12 +364,13 @@
     .acc-days.warn { color: var(--amber-text); font-weight: 650; }
     .acc-days.danger { color: var(--err-text); font-weight: 700; }
     .accounts-layout {
-      display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 16px; align-items: start;
+      flex: 1; min-height: 0;
+      display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 20px; align-items: stretch;
     }
     .account-pane {
       background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
       padding: 12px; display: flex; flex-direction: column; gap: 10px;
-      position: sticky; top: 16px; max-height: calc(100vh - 60px); overflow: hidden;
+      min-height: 0; height: 100%; overflow: hidden;
     }
     .account-pane-head, .section-title-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -384,13 +393,20 @@
       border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
     }
     .account-pane-foot .btn { flex: 1; padding: 0 4px; min-height: 26px; font-size: 11px; }
-    .account-pane .acc-grid { grid-template-columns: 1fr; gap: 6px; }
-    .account-main { min-width: 0; width: 100%; }
-    .account-empty { min-height: 320px; }
+    .account-pane .acc-grid { grid-template-columns: 1fr; gap: 2px; align-content: start; }
+    .account-main {
+      min-width: 0; width: 100%; min-height: 0; height: 100%;
+      display: flex; flex-direction: column;
+    }
+    .account-empty { flex: 1; min-height: 0; }
+    #view-vms {
+      flex: 1; min-height: 0;
+      display: flex; flex-direction: column; gap: 16px;
+    }
     /* Account header: identity + figures + actions in one card. */
     .acc-head {
       background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
-      padding: 14px 16px 10px; margin-bottom: 14px;
+      padding: 14px 16px 10px; margin-bottom: 0; flex-shrink: 0;
     }
     .acc-head-top {
       display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
@@ -439,19 +455,19 @@
       padding: 8px 10px; margin-bottom: 10px; border-radius: 8px; background: var(--amber-soft);
       border: 1px solid var(--amber-line); color: var(--amber-text); font-size: 12px;
     }
-    .account-detail-grid {
-      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+    .account-detail-list { display: flex; flex-direction: column; }
+    .account-detail-row {
+      display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 8px 14px;
+      padding: 9px 0; align-items: baseline;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
     }
-    .account-detail-item {
-      border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0;
-    }
-    .account-detail-key { color: var(--text-3); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .account-detail-row:last-child { border-bottom: 0; }
+    .account-detail-key { color: var(--text-3); font-size: 13px; font-weight: 650; }
+    .account-detail-key::after { content: "："; }
     .account-detail-value {
-      margin-top: 5px; font-family: var(--mono); font-size: 12px; color: var(--text);
+      font-family: var(--mono); font-size: 12.5px; color: var(--text);
       overflow-wrap: anywhere; user-select: text;
     }
-    .account-detail-value.secret { color: var(--err); }
-    .account-detail-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 
     @media (max-width: 1360px) {
       .sidebar { width: var(--scw); }
@@ -465,18 +481,19 @@
       .sidebar .sbtoggle { display: none; }
     }
     @media (max-width: 1180px) {
-      .accounts-layout { grid-template-columns: 228px minmax(0, 1fr); gap: 12px; }
+      .accounts-layout { grid-template-columns: 228px minmax(0, 1fr); gap: 16px; }
     }
     /* 账户栏在这里移到上方。阈值取 1040 而不是 980：实测 981–1023px 这段
        账户栏仍在左侧、侧栏已收起，VM 区只剩 644px，比 800px 视口（708px）还
        窄，属于「越缩越宽」的反常区间。抬到 1040 后全站最小容器约 704px。 */
     @media (max-width: 1040px) {
-      .accounts-layout { grid-template-columns: minmax(0, 1fr); }
-      .account-pane { position: static; max-height: none; }
-      .account-list { max-height: 260px; }
-      .account-detail-grid { grid-template-columns: 1fr; }
+      .accounts-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+      .account-pane { height: auto; max-height: none; }
+      .account-list { max-height: 200px; }
+      .account-detail-row { grid-template-columns: 6.5em minmax(0, 1fr); }
       .acc-head-top { flex-direction: column; align-items: stretch; }
       .acc-actions { justify-content: flex-start; }
+      .log-panel { flex-basis: 170px; min-height: 150px; }
     }
     .check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; }
     .check-row input { margin-top: 3px; }
@@ -515,20 +532,26 @@
     tbody tr:hover td { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
     .ops { display: flex; gap: 6px; flex-wrap: wrap; }
 
-    /* 虚拟机：身份行 + 全宽参数列。操作用行内 ⋯，不占独立列。祖先上不要加
+    /* 虚拟机：每台一张独立卡片。操作用行内 ⋯。祖先上不要加
        transform/filter，以免弄坏 #vm-ops-menu 的 fixed 定位。 */
     .vm-list {
-      background: var(--bg-card); border: 1px solid var(--line);
-      border-radius: var(--rl); box-shadow: var(--shadow); overflow: hidden;
+      flex: 1; min-height: 0; overflow: auto;
+      display: flex; flex-direction: column; gap: 12px;
+      background: transparent; border: 0; box-shadow: none;
     }
-    .vm-row { padding: 16px 18px; border-bottom: 1px solid var(--line); }
-    .vm-row:last-child { border-bottom: 0; }
+    .vm-list:has(.vm-loading) {
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--rl); box-shadow: var(--shadow);
+    }
+    .vm-row {
+      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
+      box-shadow: var(--shadow); padding: 16px 18px;
+    }
     .vm-row:hover { background: var(--bg-soft); }
     .vm-line1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .vm-line2 {
-      display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px 24px;
-      min-width: 0; margin-top: 12px; padding-top: 10px;
-      border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px;
+      min-width: 0; margin-top: 8px;
     }
     .vm-state {
       flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
@@ -548,9 +571,8 @@
     }
     .vm-kv {
       flex: 1 1 0; min-width: 0; max-width: 100%;
-      display: flex; flex-direction: column; gap: 3px;
+      display: inline-flex; align-items: center; gap: 6px;
     }
-    .vm-kv > i { font-style: normal; font-size: 11px; font-weight: 650; color: var(--text-3); }
     .vm-kv > b, .vm-val > b {
       font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums;
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -643,16 +665,24 @@
     .bg-run { background: var(--run-bg); color: var(--run-text); }
     .bg-inf { background: var(--inf-bg); color: var(--inf-text); }
 
-    .task-list { display: flex; flex-direction: column; gap: 10px; }
-    .task-item {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
-      padding: 14px 16px; cursor: pointer; box-shadow: var(--shadow);
-      transition: border-color var(--t), box-shadow var(--t);
+    .log-panel {
+      flex: 0 0 210px; min-height: 180px; max-height: 240px; margin-top: auto;
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--rl); box-shadow: var(--shadow); overflow: hidden;
+      display: flex; flex-direction: column;
     }
-    .task-item:hover { border-color: var(--line-3); box-shadow: var(--shadow-lg); }
-    .task-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .task-msg { font-size: 13px; font-weight: 650; }
-    .task-time { margin-top: 6px; color: var(--text-3); font-size: 12px; }
+    .log-panel-h {
+      padding: 10px 14px; border-bottom: 1px solid var(--line);
+      font-size: 13px; font-weight: 750;
+    }
+    .log-viewer {
+      flex: 1; min-height: 0; overflow: auto;
+      padding: 10px 14px; background: #f3f6f4;
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: #2d6a3f;
+    }
+    .op-log-line { white-space: pre-wrap; word-break: break-word; }
+    .op-log-line.err { color: var(--err-text); }
+    .log-empty { color: var(--text-3); }
 
     /* ── Modal ───────────────────────────────────── */
     .mo {
@@ -786,6 +816,7 @@
       /* 侧栏脱离文档流后必须给内容让出它的宽度，否则内容左缘被压住 64px */
       .content { padding-left: var(--scw); }
       .page { padding: 20px 14px 32px; }
+      #pg-accounts { padding: 40px 14px 14px; }
       .page-title { font-size: 22px; }
       .page-head { flex-direction: column; align-items: stretch; }
     }
@@ -805,9 +836,7 @@
     <div class="login-inner">
       <div>
         <div class="login-mark">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-          </svg>
+          <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsYQJ62ZWymNgjtplmh_exEK3yrVnfelJ68EgmjTTQqw&amp;s" alt="" />
         </div>
         <div class="login-h1">Azure Manager</div>
         <div class="login-sub">输入访问密码登录管理面板</div>
@@ -834,9 +863,7 @@
       <div class="sidebar-inner">
         <div class="sb-brand">
           <div class="sb-logo">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
-            </svg>
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsYQJ62ZWymNgjtplmh_exEK3yrVnfelJ68EgmjTTQqw&amp;s" alt="" />
           </div>
           <span class="sb-name">Azure Manager</span>
         </div>
@@ -923,14 +950,9 @@
             <div class="account-pane-head">
               <span>账户 <span class="acc-count" id="account-list-count">0</span></span>
               <div class="acc-pane-actions">
-                <button class="btn btn-g btn-sm" type="button" id="btn-refresh-all-accounts"
+                <button class="btn btn-s btn-sm" type="button" id="btn-refresh-all-accounts"
                         title="刷新全部账户的订阅信息、AI 配额、消费与虚拟机"
-                        aria-label="刷新全部账户的全部信息">
-                  <svg class="ib-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                    <path d="M21 3v6h-6" />
-                  </svg>
-                </button>
+                        aria-label="刷新全部账户">刷新全部</button>
                 <button class="btn btn-p btn-sm" type="button" id="btn-open-add" onclick="openAddAccount()">+ 添加</button>
               </div>
             </div>
@@ -963,26 +985,19 @@
                   <div class="bgrp acc-actions">
                     <button class="btn btn-g btn-sm" type="button" id="btn-account-details">账户详情</button>
                     <button class="btn btn-s btn-sm" type="button" id="btn-refresh-vms"
-                            title="重新拉取该账户的订阅信息、AI 配额、消费与虚拟机列表">刷新全部</button>
+                            title="重新拉取该账户的订阅信息、AI 配额、消费与虚拟机列表">刷新</button>
                     <button class="btn btn-p btn-sm" type="button" id="btn-create-vm">创建虚拟机</button>
                   </div>
                 </div>
                 <div id="account-insights"></div>
               </section>
 
-              <div class="tabs">
-                <div class="tab active" data-vtab="vms">虚拟机</div>
-                <div class="tab" data-vtab="tasks">任务</div>
-              </div>
-
-              <div id="vtab-vms">
-                <div id="vm-stale-note" class="hidden"></div>
-                <!-- 一台 VM 一行。role 由 renderVms() 按状态切换。 -->
-                <div id="vm-list" class="vm-list"></div>
-              </div>
-              <div id="vtab-tasks" class="hidden">
-                <div id="task-list" class="task-list"></div>
-              </div>
+              <div id="vm-stale-note" class="hidden"></div>
+              <div id="vm-list" class="vm-list"></div>
+              <section class="log-panel" aria-label="执行日志">
+                <div class="log-panel-h">执行日志</div>
+                <div id="op-log" class="log-viewer"><div class="log-empty">暂无执行日志</div></div>
+              </section>
             </div>
           </main>
         </div>
@@ -1267,20 +1282,18 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
     <div class="md-b">
       <div class="frow">
         <div class="fg">
-          <label class="fl" for="create-name"><span class="fl-title">虚拟机名称</span><span class="fl-azure">可选</span></label>
+          <label class="fl" for="create-name"><span class="fl-title">虚拟机名称</span></label>
           <input class="fi" id="create-name" placeholder="留空自动生成，例如 vm-eastus-123456" />
         </div>
         <div class="fg">
           <label class="fl" for="create-region"><span class="fl-title">区域</span></label>
           <select class="fi" id="create-region"><option value="">加载中...</option></select>
-          <div class="fhint" id="create-region-hint">只列出当前订阅可实际创建虚拟机的区域（已排除地理组，并遵循订阅上的 Azure Policy 区域限制）。</div>
         </div>
       </div>
       <div class="frow">
         <div class="fg">
           <label class="fl" for="create-size"><span class="fl-title">实例规格</span></label>
           <select class="fi" id="create-size"><option value="">选择区域后加载…</option></select>
-          <div class="fhint" id="create-size-hint">优先显示当前区域可用的免费规格；也可以选择其他规格。</div>
         </div>
         <div class="fg">
           <label class="fl" for="create-os"><span class="fl-title">操作系统</span></label>
@@ -1292,7 +1305,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
             <option value="debian11">Debian 11</option>
             <option value="centos8">CentOS 8</option>
           </select>
-          <div class="fhint">ARM64 VM 会自动选择 ARM64 镜像；CentOS 8 当前仅提供 x86_64 镜像。</div>
         </div>
       </div>
       <div class="frow">
@@ -1304,7 +1316,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
             <option value="128"></option><option value="256"></option><option value="512"></option>
             <option value="1024"></option><option value="2048"></option>
           </datalist>
-          <div class="fhint">支持 30、32、64、128、256、512、1024、2048 GB。</div>
         </div>
         <div class="fg">
           <label class="fl" for="create-disk-type"><span class="fl-title">系统盘类型</span></label>
@@ -1315,23 +1326,22 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
           </select>
         </div>
       </div>
-      <div class="frow">
-        <div class="fg">
-          <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
-          <select class="fi" id="create-ip">
-            <option value="Dynamic" selected>Dynamic</option>
-            <option value="Static">Static</option>
-          </select>
-          <div class="fhint" id="create-ip-hint">会根据当前区域支持情况自动限制。</div>
-        </div>
+      <div class="fg">
+        <label class="fl" for="create-ip"><span class="fl-title">公网 IP 类型</span></label>
+        <select class="fi" id="create-ip">
+          <option value="Dynamic" selected>Dynamic</option>
+          <option value="Static">Static</option>
+        </select>
+      </div>
+      <div class="frow create-auth">
         <div class="fg">
           <label class="fl" for="create-username"><span class="fl-title">管理员用户名</span></label>
           <input class="fi" id="create-username" placeholder="留空使用 azureuser" autocomplete="off" />
         </div>
-      </div>
-      <div class="fg">
-        <label class="fl" for="create-password"><span class="fl-title">管理员密码</span><span class="fl-azure">留空自动生成</span></label>
-        <input class="fi" type="password" id="create-password" placeholder="12～72 字符" autocomplete="new-password" />
+        <div class="fg">
+          <label class="fl" for="create-password"><span class="fl-title">管理员密码</span></label>
+          <input class="fi" type="password" id="create-password" placeholder="留空自动生成" autocomplete="new-password" />
+        </div>
       </div>
       <div class="check-row">
         <input type="checkbox" id="create-use-global-ssh" />
@@ -1339,7 +1349,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
       </div>
       <div class="check-row">
         <input type="checkbox" id="create-enable-root" />
-        <label for="create-enable-root">创建后启用 root SSH 登录<span class="muted small">（会增加安全风险，仅在明确需要时开启）</span></label>
+        <label for="create-enable-root">创建后启用 root SSH 登录</label>
       </div>
       <div class="fg">
         <label class="fl"><span class="fl-title">网络安全组</span></label>
@@ -1351,14 +1361,13 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
           </div>
           <div class="fg">
             <label class="fl"><span class="fl-title">全部放行</span></label>
-            <div class="check-row"><input type="checkbox" id="create-nsg-all-inbound" /><label for="create-nsg-all-inbound">全部入站</label></div>
-            <div class="check-row"><input type="checkbox" id="create-nsg-all-outbound" /><label for="create-nsg-all-outbound">全部出站</label></div>
+            <div class="check-row"><input type="checkbox" id="create-nsg-all-inbound" checked /><label for="create-nsg-all-inbound">全部入站</label></div>
+            <div class="check-row"><input type="checkbox" id="create-nsg-all-outbound" checked /><label for="create-nsg-all-outbound">全部出站</label></div>
           </div>
         </div>
-        <div class="fhint">默认仅开放你填写的端口。全部入站/出站必须显式勾选。</div>
       </div>
       <div class="fg">
-        <label class="fl" for="create-ud"><span class="fl-title">开机脚本</span><span class="fl-azure">留空则使用全局默认</span></label>
+        <label class="fl" for="create-ud"><span class="fl-title">开机脚本</span></label>
         <textarea class="fi mono" id="create-ud" rows="5" placeholder="#!/bin/bash&#10;..."></textarea>
       </div>
     </div>
@@ -1436,7 +1445,7 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
       <div id="detail-modal-content"></div>
     </div>
     <div class="md-f" style="justify-content:space-between">
-      <button class="btn btn-s" type="button" id="btn-copy-account-details">复制完整信息</button>
+      <button class="btn btn-s" type="button" id="btn-copy-account-details">复制 JSON</button>
       <div class="bgrp">
         <button class="btn btn-g" type="button" data-close="mo-account-details">关闭</button>
         <button class="btn btn-s" type="button" id="btn-edit-acc">编辑账户</button>
@@ -1509,6 +1518,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
 
 <div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
 
-<script src="/app.js?v=20260918f"></script>
+<script src="/app.js?v=20260918j"></script>
 </body>
 </html>

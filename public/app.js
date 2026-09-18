@@ -10,7 +10,6 @@ const S = {
   vmsCache: new Map(),
   vmsReads: new Map(), // accountId -> AbortController
   regions: [],
-  activeVTab: 'vms',
   pendingAction: null,
   trackingTasks: new Set(),
   addVerifiedKey: null, // fingerprint of last successfully verified credentials
@@ -132,8 +131,7 @@ function formatCostUpdatedAt(iso) {
   if (Number.isNaN(d.getTime())) return '';
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  if (d.toDateString() === new Date().toDateString()) return `${hh}:${mm}`;
-  return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 }
 
 async function copyText(text) {
@@ -437,52 +435,27 @@ function renderAccountDetailsModal(account) {
   const modal = $('mo-account-details');
   if (!modal) return;
   const secret = detail.clientSecret || '尚未读取';
-  const secretText = S.revealedAccountSecret ? secret : '••••••••••••';
-  const currency = detail.costCurrency ? ` ${detail.costCurrency}` : '';
-  const mtd = formatCostAmount(detail.costMtd) ?? '未获取';
-  const acc = formatCostAmount(detail.costAcc) ?? '未获取';
-  const updatedAt = detail.costUpdatedAt ? new Date(detail.costUpdatedAt).toLocaleString() : '未查询';
-  const rawWarning = detail.costWarning || '';
-  const warning = rawWarning.length > 180 ? `${rawWarning.slice(0, 180)}…` : rawWarning;
   const detailItems = [
-    ['账户名称', accountDisplayName(detail)],
     ['邮箱', detail.email || accountDisplayName(detail)],
     ['订阅名称', detail.subscriptionName || '未获取'],
     ['订阅状态', detail.subscriptionState || '未获取'],
+    ['订阅到期', detail.expirationDate || '未设置'],
     ['Client ID', detail.clientId || '-'],
     ['Tenant ID', detail.tenantId || '-'],
     ['Subscription ID', detail.subscriptionId || '-'],
-    ['订阅到期', detail.expirationDate || '未设置'],
+    ['Client Secret', secret],
   ];
   $('detail-modal-title').textContent = accountDisplayName(detail);
-  $('detail-modal-sub').textContent = [detail.subscriptionName, detail.subscriptionState].filter(Boolean).join(' · ') || 'Azure 账户';
+  if ($('detail-modal-sub')) $('detail-modal-sub').textContent = '';
   $('detail-modal-loading')?.classList.add('hidden');
   $('detail-modal-content').innerHTML = `
-    <div class="account-detail-grid">
+    <div class="account-detail-list">
       ${detailItems.map(([key, value]) => `
-        <div class="account-detail-item">
+        <div class="account-detail-row">
           <div class="account-detail-key">${esc(key)}</div>
           <div class="account-detail-value">${esc(value)}</div>
         </div>`).join('')}
-      <div class="account-detail-item" style="grid-column:1/-1">
-        <div class="account-detail-key">Client Secret</div>
-        <div class="account-detail-value secret" id="detail-secret-value">${esc(secretText)}</div>
-        <div class="account-detail-actions">
-          <button class="btn btn-s btn-sm" type="button" id="btn-toggle-account-secret">${S.revealedAccountSecret ? '隐藏' : '显示'}</button>
-          <button class="btn btn-s btn-sm" type="button" id="btn-copy-account-secret">复制密钥</button>
-        </div>
-      </div>
-    </div>
-    <div class="section-title-row" style="margin-top:16px">
-      <span>成本与 AI 配额</span>
-      <span class="muted small">更新于 ${esc(updatedAt)}</span>
-    </div>
-    <div class="account-detail-grid" style="margin-top:8px">
-      <div class="account-detail-item"><div class="account-detail-key">本月消费</div><div class="account-detail-value">${esc(mtd)}${esc(currency)}</div></div>
-      <div class="account-detail-item"><div class="account-detail-key">累计消费</div><div class="account-detail-value">${esc(acc)}${esc(currency)}</div></div>
-      <div class="account-detail-item" style="grid-column:1/-1"><div class="account-detail-key">AI 配额层级</div><div class="account-detail-value">${esc(detail.quotaTier || '未获取')}</div></div>
-    </div>
-    ${warning ? `<div class="err-box" style="margin-top:10px">${esc(warning)}</div>` : ''}`;
+    </div>`;
 }
 
 function showAccountDetailFromCache(account) {
@@ -569,18 +542,16 @@ async function copyAccountDetails(accountId) {
   let detail = S.accountDetails[accountId] || S.accounts.find((item) => item.id === accountId);
   if (detail && detail.clientSecret === undefined) detail = await loadAccountDetail(accountId) || detail;
   if (!detail) return;
-  const lines = [
-    `账户名称: ${accountDisplayName(detail)}`,
-    `邮箱: ${detail.email || ''}`,
-    `订阅名称: ${detail.subscriptionName || ''}`,
-    `订阅状态: ${detail.subscriptionState || ''}`,
-    `Subscription ID: ${detail.subscriptionId || ''}`,
-    `Client ID: ${detail.clientId || ''}`,
-    `Client Secret: ${detail.clientSecret || ''}`,
-    `Tenant ID: ${detail.tenantId || ''}`,
-    `订阅到期: ${detail.expirationDate || ''}`,
-  ];
-  await copyText(lines.join('\n'));
+  const payload = {
+    appId: detail.clientId || '',
+    password: detail.clientSecret || '',
+    tenant: detail.tenantId || '',
+    subscriptionId: detail.subscriptionId || '',
+    displayName: detail.email || accountDisplayName(detail),
+    email: detail.email || '',
+    expirationDate: detail.expirationDate || '',
+  };
+  await copyText(JSON.stringify(payload, null, 2));
 }
 window.copyAccountDetails = copyAccountDetails;
 
@@ -1002,12 +973,6 @@ window.refreshAllAccounts = refreshAllAccounts;
 async function openVmView(accId, e) {
   if (e) e.stopPropagation();
   S.selectedAccId = accId;
-  S.activeVTab = 'vms';
-  document.querySelectorAll('.tab[data-vtab]').forEach(x => {
-    x.classList.toggle('active', x.dataset.vtab === 'vms');
-  });
-  $('vtab-vms')?.classList.remove('hidden');
-  $('vtab-tasks')?.classList.add('hidden');
 
   const acc = S.accounts.find(a => a.id === accId);
   if (!acc) return;
@@ -1025,6 +990,7 @@ async function openVmView(accId, e) {
   closeModal('mo-confirm');
   closeModal('mo-create-vm');
   closeAccountDetailsModal();
+  renderOpLog([]);
 
   renderVms();
   S.accountInsights[accId] = { ...(S.accountInsights[accId] || {}), loading: true };
@@ -1052,6 +1018,7 @@ async function openVmView(accId, e) {
     loadVmsFor(accId),
     loadAccountStats(accId),
     loadAccountInsights(accId),
+    loadOpLogs(accId),
   ]);
 }
 window.openVmView = openVmView;
@@ -1068,7 +1035,19 @@ function backToAccountList() {
 // ── VMs ───────────────────────────────────────────────────────
 async function refreshWorkspace() {
   if (!S.selectedAccId) return;
-  await Promise.allSettled([loadVmsFor(S.selectedAccId, { force: true }), refreshAccountInfo(S.selectedAccId)]);
+  const accId = S.selectedAccId;
+  abortVmsReads();
+  S.vmsCache.delete(accId);
+  S.vmsLoading = true;
+  S.accountInsights[accId] = { loading: true };
+  renderVms();
+  renderAccountInsights(accId);
+  renderOpLog([]);
+  await Promise.allSettled([
+    loadVmsFor(accId, { force: true }),
+    refreshAccountInfo(accId),
+    loadOpLogs(accId),
+  ]);
   toast('已刷新');
 }
 
@@ -1183,7 +1162,6 @@ function vmRowHtml(vm, index) {
           <span class="dot ${st.dot}" aria-hidden="true"></span>${esc(st.label)}
         </span>
         <h3 class="vm-name" title="${esc(vm.name)}">${esc(vm.name)}</h3>
-        ${vm.location ? `<span class="vm-region" title="区域">${esc(vm.location)}</span>` : ''}
         <button class="ops-trigger" type="button" data-vm-ops="${index}"
                 aria-label="操作" aria-haspopup="menu" aria-expanded="false" aria-controls="vm-ops-menu">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -1192,10 +1170,11 @@ function vmRowHtml(vm, index) {
         </button>
       </div>
       <div class="vm-line2">
-        <span class="vm-kv size"><i>规格</i><b class="mono" title="${esc(vm.vmSize || '')}">${esc(vm.vmSize || '—')}</b></span>
-        ${vm.diskSizeGb ? `<span class="vm-kv disk"><i>系统盘</i><b>${esc(String(vm.diskSizeGb))} GB</b></span>` : ''}
-        <span class="vm-kv"><i>开机时间</i><b>${esc(uptime)}</b></span>
-        <span class="vm-kv ip"><i>公网 IP</i>${
+        ${vm.location ? `<span class="vm-kv region"><b class="mono vm-region" title="${esc(vm.location)}">${esc(vm.location)}</b></span>` : ''}
+        <span class="vm-kv size"><b class="mono" title="${esc(vm.vmSize || '')}">${esc(vm.vmSize || '—')}</b></span>
+        ${vm.diskSizeGb ? `<span class="vm-kv disk"><b>${esc(String(vm.diskSizeGb))} GB</b></span>` : ''}
+        <span class="vm-kv"><b>${esc(uptime)}</b></span>
+        <span class="vm-kv ip">${
           hasIp
             ? `<span class="vm-val" data-copy="${esc(ipText)}" title="点击复制"><b class="mono">${esc(ipText)}</b>${alloc}</span>`
             : '<b class="vm-none">无</b>'
@@ -1379,7 +1358,6 @@ function renderVmSizeOptions(sizes, preferred = 'Standard_B1s') {
 
 async function loadVmSizes(location, preferred = 'Standard_B1s') {
   const sel = $('create-size');
-  const hint = $('create-size-hint');
   if (!sel) return;
   if (!location) {
     sel.innerHTML = `<option value="">选择区域后加载…</option>`;
@@ -1392,12 +1370,6 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
     const sizes = await api('GET', `/api/vm-sizes?location=${encodeURIComponent(location)}`);
     if (accId !== S.selectedAccId) return;
     renderVmSizeOptions(Array.isArray(sizes) ? sizes : [], preferred);
-    if (hint) {
-      const freeCount = (Array.isArray(sizes) ? sizes : []).filter(s => s.freeTierHint).length;
-      hint.textContent = freeCount
-        ? `已从 Azure 加载 ${Array.isArray(sizes) ? sizes.length : 0} 个规格（当前区域含 ${freeCount} 个常见免费试用规格）。`
-        : `已从 Azure 加载 ${Array.isArray(sizes) ? sizes.length : 0} 个规格。当前区域未返回常见免费试用规格。`;
-    }
   } catch (e) {
     // Fallback static list so create flow still works.
     if (accId !== S.selectedAccId) return;
@@ -1411,7 +1383,6 @@ async function loadVmSizes(location, preferred = 'Standard_B1s') {
       { name: 'Standard_D2s_v3', numberOfCores: 2, memoryInMB: 8192, maxDataDiskCount: 4, freeTierHint: false },
       { name: 'Standard_D4s_v3', numberOfCores: 4, memoryInMB: 16384, maxDataDiskCount: 8, freeTierHint: false },
     ], preferred);
-    if (hint) hint.textContent = `实时查询失败，已使用备用列表：${e.message}`;
   } finally {
     if (accId === S.selectedAccId) sel.disabled = false;
   }
@@ -1421,14 +1392,11 @@ async function loadRegions() {
   const accId = S.selectedAccId;
   if (!accId) return;
   const sel = $('create-region');
-  const hint = $('create-region-hint');
-  const baseHint = '只列出当前订阅可实际创建虚拟机的区域（已排除地理组，并遵循订阅上的 Azure Policy 区域限制）。';
   const previous = sel?.value || '';
   if (sel) {
     sel.disabled = true;
     sel.innerHTML = `<option value="">加载区域中…</option>`;
   }
-  if (hint) hint.textContent = '正在读取订阅可用的区域…';
   try {
     const payload = await api('GET', '/api/regions');
     if (accId !== S.selectedAccId) return;
@@ -1440,11 +1408,6 @@ async function loadRegions() {
     if (!regions.length) {
       sel.innerHTML = `<option value="">无可创建虚拟机的区域</option>`;
       sel.disabled = true;
-      if (hint) {
-        hint.textContent = payload?.warning
-          ? `未获取到可用区域：${payload.warning}`
-          : '订阅下没有可用的区域，请检查订阅状态与 Azure Policy 区域限制。';
-      }
       return;
     }
     sel.innerHTML = regions.map(r =>
@@ -1454,7 +1417,6 @@ async function loadRegions() {
     // Preserve the previous choice when it is still allowed, so a rerun of this
     // loader does not silently move the target region.
     if (previous && regions.some((r) => r.name === previous)) sel.value = previous;
-    if (hint) hint.textContent = describeRegionFilter(payload, regions.length, baseHint);
   } catch (e) {
     if (accId !== S.selectedAccId) return;
     S.regions = [];
@@ -1462,27 +1424,11 @@ async function loadRegions() {
       sel.innerHTML = `<option value="">区域加载失败</option>`;
       sel.disabled = true;
     }
-    if (hint) hint.textContent = `区域加载失败：${e.message}。请刷新后重试，避免在未知区域上创建虚拟机。`;
   }
-}
-
-/** Explains what the region list left out, so a filtered list is never a mystery. */
-function describeRegionFilter(payload, count, fallback) {
-  const parts = [];
-  const policyExcluded = payload?.excludedByPolicy?.length ?? 0;
-  const nonPhysical = payload?.excludedNonPhysical?.length ?? 0;
-  const notDeployable = payload?.excludedNotDeployable?.length ?? 0;
-  if (policyExcluded) parts.push(`Policy 禁止 ${policyExcluded} 个`);
-  if (nonPhysical) parts.push(`非物理区域 ${nonPhysical} 个`);
-  if (notDeployable) parts.push(`不支持 Compute ${notDeployable} 个`);
-  const suffix = parts.length ? `已排除：${parts.join('、')}。` : '';
-  const warn = payload?.warning ? `⚠ ${payload.warning}。` : '';
-  return `${count} 个可用区域。${suffix}${warn}${fallback}`;
 }
 
 async function loadIpPermission(location) {
   const sel = $('create-ip');
-  const hint = $('create-ip-hint');
   if (!sel || !location) return;
   const accId = S.selectedAccId;
   sel.disabled = true;
@@ -1495,23 +1441,19 @@ async function loadIpPermission(location) {
       sel.add(new Option('Dynamic', 'Dynamic'));
       sel.value = 'Dynamic';
       sel.disabled = true;
-      if (hint) hint.textContent = '当前区域仅支持 Basic / Dynamic 公网 IP。';
     } else if (permission === 'Static') {
       sel.add(new Option('Static', 'Static'));
       sel.value = 'Static';
       sel.disabled = true;
-      if (hint) hint.textContent = '当前区域仅支持 Standard / Static 公网 IP。';
     } else {
       sel.add(new Option('Dynamic', 'Dynamic'));
       sel.add(new Option('Static', 'Static'));
       sel.value = 'Dynamic';
       sel.disabled = false;
-      if (hint) hint.textContent = '当前区域同时支持 Dynamic 和 Static。';
     }
   } catch (e) {
     if (accId !== S.selectedAccId) return;
     sel.disabled = false;
-    if (hint) hint.textContent = `IP 类型检测失败，保留手动选择：${e.message}`;
   }
 }
 
@@ -1560,57 +1502,59 @@ async function confirmPendingAction() {
         });
     toast('操作已提交', 'success');
     trackTask(task.taskId);
-    if (S.activeVTab === 'tasks') loadTasks();
+    loadOpLogs(accountId);
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
-// ── tabs / tasks ──────────────────────────────────────────────
-function switchVmTab(tabName) {
-  S.activeVTab = tabName;
-  document.querySelectorAll('.tab[data-vtab]').forEach(x => {
-    x.classList.toggle('active', x.dataset.vtab === tabName);
-  });
-  $('vtab-vms')?.classList.toggle('hidden', tabName !== 'vms');
-  $('vtab-tasks')?.classList.toggle('hidden', tabName !== 'tasks');
-  if (tabName === 'tasks') loadTasks();
+// ── 执行日志 ──────────────────────────────────────────────────
+function formatLogTime(iso) {
+  if (!iso) return '--:--:--';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    const m = String(iso).match(/T(\d{2}:\d{2}:\d{2})/);
+    return m ? m[1] : String(iso).slice(11, 19) || '--:--:--';
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function renderTaskList(tasks) {
-  $('task-list').innerHTML = tasks.length
-    ? tasks.map(t => `
-        <div class="task-item" onclick='showTaskDetail(${jsq(t.id)})'>
-          <div class="task-top">
-            <div class="task-msg">${esc(t.message || t.type)}</div>
-            ${badge(t.status)}
-          </div>
-          <div class="task-time">${esc(t.createdAt || '')}</div>
-        </div>
-      `).join('')
-    : `<div class="empty"><h3>暂无任务</h3><p>创建或操作虚拟机后，进度会出现在这里。</p></div>`;
+function renderOpLog(lines) {
+  const host = $('op-log');
+  if (!host) return;
+  if (!lines.length) {
+    host.innerHTML = `<div class="log-empty">暂无执行日志</div>`;
+    return;
+  }
+  host.innerHTML = lines.map((line) => {
+    const cls = String(line.level || '').toLowerCase() === 'error' ? ' err' : '';
+    return `<div class="op-log-line${cls}">[${esc(formatLogTime(line.createdAt))}] ${esc(line.message || '')}</div>`;
+  }).join('');
+  host.scrollTop = host.scrollHeight;
 }
 
-async function loadTasks() {
-  const accId = S.selectedAccId;
+async function loadOpLogs(accountId) {
+  const accId = accountId || S.selectedAccId;
   if (!accId) {
-    renderTaskList([]);
+    renderOpLog([]);
     return;
   }
   try {
-    const tasks = await api('GET', '/api/tasks');
+    const payload = await api('GET', `/api/accounts/${accId}/logs`);
     if (accId !== S.selectedAccId) return;
-    renderTaskList(Array.isArray(tasks) ? tasks : []);
+    renderOpLog(Array.isArray(payload?.items) ? payload.items : []);
   } catch (e) {
     if (accId !== S.selectedAccId) return;
-    toast(`加载任务失败: ${e.message}`, 'error');
-    renderTaskList([]);
+    const host = $('op-log');
+    if (host) host.innerHTML = `<div class="log-empty">执行日志加载失败：${esc(e.message)}</div>`;
   }
 }
 
 function trackTask(taskId) {
   if (S.trackingTasks.has(taskId)) return;
   S.trackingTasks.add(taskId);
+  if (S.selectedAccId) loadOpLogs(S.selectedAccId);
   pollTask(taskId);
 }
 
@@ -1619,19 +1563,18 @@ async function pollTask(taskId) {
     if (i > 0) await new Promise(r => setTimeout(r, 5000));
     try {
       const t = await api('GET', `/api/task_status/${taskId}`);
+      if (S.selectedAccId) loadOpLogs(S.selectedAccId);
       if (t.status === 'success') {
         toast('任务完成', 'success');
         S.trackingTasks.delete(taskId);
         if (S.selectedAccId) loadVmsFor(S.selectedAccId, { force: true });
-        if (S.activeVTab === 'tasks') loadTasks();
-        await showTaskDetail(taskId);
+        const result = t.result && typeof t.result === 'object' ? t.result : null;
+        if (result && result.username && result.password) await showTaskDetail(taskId);
         return;
       }
       if (t.status === 'failure') {
         toast(`任务失败: ${t.errorMessage || t.message}`, 'error');
         S.trackingTasks.delete(taskId);
-        if (S.activeVTab === 'tasks') loadTasks();
-        await showTaskDetail(taskId);
         return;
       }
     } catch { /* keep polling */ }
@@ -1718,8 +1661,8 @@ async function openCreateVmDialog() {
   if ($('create-enable-root')) $('create-enable-root').checked = false;
   if ($('create-nsg-enabled')) $('create-nsg-enabled').checked = true;
   if ($('create-nsg-ports')) $('create-nsg-ports').value = '22';
-  if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = false;
-  if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = false;
+  if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = true;
+  if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = true;
   openModal('mo-create-vm');
   if (!S.regions.length) await loadRegions();
   const loc = $('create-region')?.value || S.regions[0]?.name || '';
@@ -1751,9 +1694,6 @@ async function submitCreateVm() {
     if (ports.length > 20) throw new Error('最多配置 20 个开放端口');
     const openAllInbound = $('create-nsg-all-inbound').checked;
     const openAllOutbound = $('create-nsg-all-outbound').checked;
-    if ((openAllInbound || openAllOutbound) && !confirm('确认开放全部入站或出站流量？这会显著扩大实例的网络暴露面。')) {
-      return;
-    }
     const task = await api('POST', `/api/accounts/${S.createVmAccountId}/create-vm`, {
       region: $('create-region').value,
       vmSize: $('create-size').value,
@@ -1775,7 +1715,6 @@ async function submitCreateVm() {
     closeModal('mo-create-vm');
     toast('创建任务已提交', 'success');
     trackTask(task.taskId);
-    if (S.activeVTab === 'tasks') loadTasks();
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -2375,12 +2314,6 @@ function bindUI() {
     if (t.closest('#sbtoggle')) {
       e.preventDefault();
       $('sidebar')?.classList.toggle('col');
-      return;
-    }
-
-    const vtab = t.closest('.tab[data-vtab]');
-    if (vtab) {
-      switchVmTab(vtab.getAttribute('data-vtab'));
       return;
     }
 

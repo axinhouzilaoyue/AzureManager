@@ -15,6 +15,7 @@ import {
   getGlobalStartupScript,
   getTaskResponse,
   listTasksForAccount,
+  listAccountOperationLogs,
   initializeDatabase,
   listAccounts,
   reorderAccounts,
@@ -1006,6 +1007,19 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
     } catch (error) {
       return errorResponse(400, formatAzureError(error));
     }
+  }
+
+  const logsMatch = req.method === "GET"
+    ? url.pathname.match(/^\/api\/accounts\/([0-9a-fA-F-]{36})\/logs$/)
+    : null;
+  if (logsMatch) {
+    const accountId = logsMatch[1];
+    const account = await getAccountById(ENV, accountId);
+    if (!account) return errorResponse(404, "账户未找到");
+    return jsonResponse({
+      accountId,
+      items: await listAccountOperationLogs(ENV, accountId),
+    });
   }
 
   if (req.method === "GET" && url.pathname === "/api/tasks") {

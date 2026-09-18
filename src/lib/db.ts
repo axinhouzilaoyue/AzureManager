@@ -484,6 +484,31 @@ export async function listTasksForAccount(env: AppEnv, accountId: string, limit 
   });
 }
 
+export async function listAccountOperationLogs(
+  env: AppEnv,
+  accountId: string,
+  limit = 250,
+): Promise<Array<{ createdAt: string; level: string; message: string }>> {
+  const rows = env.DB.prepare(
+    `SELECT createdAt, level, message FROM (
+        SELECT l.created_at AS createdAt, l.id AS ord, l.level AS level, l.message AS message
+        FROM task_logs l
+        INNER JOIN tasks t ON t.id = l.task_id
+        WHERE t.account_id = ?
+        UNION ALL
+        SELECT t.created_at AS createdAt, 0 AS ord,
+               CASE WHEN t.status = 'failure' THEN 'error' ELSE 'info' END AS level,
+               COALESCE(t.message, t.type) AS message
+        FROM tasks t
+        WHERE t.account_id = ?
+          AND NOT EXISTS (SELECT 1 FROM task_logs l WHERE l.task_id = t.id)
+      )
+      ORDER BY createdAt DESC, ord DESC
+      LIMIT ?`,
+  ).all(accountId, accountId, limit) as Array<{ createdAt: string; level: string; message: string }>;
+  return rows.reverse();
+}
+
 export async function getTaskResponse(env: AppEnv, taskId: string): Promise<TaskResponse | null> {
   const taskRow = env.DB.prepare(
     `SELECT id, account_id, type, status, lock_key, message, result_json,
