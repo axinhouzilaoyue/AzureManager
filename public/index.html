@@ -35,9 +35,9 @@
       --amber-text: #92400e;
       --amber-soft: rgba(217, 119, 6, 0.12);
       --amber-line: rgba(217, 119, 6, 0.32);
-      --ok: #10b981;
-      --ok-bg: #d1fae5;
-      --ok-text: #065f46;
+      --ok: #5c7f6a;
+      --ok-bg: rgba(92, 127, 106, 0.12);
+      --ok-text: #3a5546;
       --err: #c65746;
       --err-bg: rgba(198, 87, 70, 0.1);
       --err-text: #8a3a30;
@@ -128,7 +128,7 @@
       border-radius: var(--r); padding: 10px 14px; font-size: 13px; line-height: 1.5;
     }
     .err-box { background: var(--err-bg); border: 1px solid rgba(198,87,70,0.35); color: var(--err-text); }
-    .ok-box  { background: var(--ok-bg); border: 1px solid rgba(5,150,105,0.28); color: var(--ok-text); }
+    .ok-box  { background: var(--ok-bg); border: 1px solid color-mix(in srgb, var(--ok) 32%, transparent); color: var(--ok-text); }
 
     /* ── Login (CPA style) ───────────────────────── */
     #login-screen { display: flex; min-height: 100vh; background: var(--bg); }
@@ -212,8 +212,7 @@
     .sb-logo {
       width: 32px; height: 32px; border-radius: var(--r); flex-shrink: 0;
       display: grid; place-items: center;
-      background: linear-gradient(135deg, #1783ff, #0b5fbf); color: #fff;
-      box-shadow: 0 2px 6px rgba(11, 95, 191, 0.28);
+      background: var(--accent-text); color: #fff;
     }
     .sb-name { font-size: 15px; font-weight: 800; letter-spacing: -0.02em; white-space: nowrap; }
     .sb-sec { padding: 12px 8px; flex: 1; }
@@ -243,9 +242,9 @@
       box-shadow: inset 0 0 0 1px var(--line);
     }
     .ni.active .ni-ico {
-      color: #fff;
-      background: linear-gradient(135deg, #1783ff, #0b5fbf);
-      box-shadow: 0 2px 6px rgba(11, 95, 191, 0.26);
+      color: var(--accent-text);
+      background: var(--accent-soft);
+      box-shadow: none;
     }
     .ni-ico svg { width: 14px; height: 14px; }
     .ni-title { font-size: 13px; font-weight: 650; white-space: nowrap; }
@@ -342,9 +341,8 @@
     }
     .acc-card:hover { background: var(--bg-soft); }
     .acc-card.selected {
-      background: var(--accent-soft);
-      border-color: var(--accent-line);
-      box-shadow: inset 3px 0 0 var(--accent);
+      background: var(--bg-hover);
+      border-color: var(--line);
     }
     .acc-card.dragging { opacity: 0.45; }
     .acc-drag {
@@ -477,15 +475,16 @@
     @media (max-width: 1180px) {
       .accounts-layout { grid-template-columns: 228px minmax(0, 1fr); gap: 12px; }
     }
-    @media (max-width: 980px) {
+    /* 账户栏在这里移到上方。阈值取 1040 而不是 980：实测 981–1023px 这段
+       账户栏仍在左侧、侧栏已收起，VM 区只剩 644px，比 800px 视口（708px）还
+       窄，属于「越缩越宽」的反常区间。抬到 1040 后全站最小容器约 704px。 */
+    @media (max-width: 1040px) {
       .accounts-layout { grid-template-columns: minmax(0, 1fr); }
       .account-pane { position: static; max-height: none; }
       .account-list { max-height: 260px; }
       .account-detail-grid { grid-template-columns: 1fr; }
       .acc-head-top { flex-direction: column; align-items: stretch; }
       .acc-actions { justify-content: flex-start; }
-      .vm-toolbar { flex-direction: column; }
-      .vm-toolbar .fi:last-child { width: 100%; }
     }
     .acc-card.dragging { opacity: 0.5; transform: none; }
     .acc-drag { cursor: grab; color: var(--text-3); font-size: 16px; line-height: 1; }
@@ -517,17 +516,8 @@
     .tab:hover { color: var(--text); }
     .tab.active { color: var(--accent-text); border-bottom-color: var(--accent); }
 
-    .tw {
-      overflow: auto; background: var(--bg-card); border: 1px solid var(--line);
-      border-radius: var(--rl); box-shadow: var(--shadow);
-    }
+    /* 通用表格规则保留给弹窗里的 `.map-table`（JSON 字段对照表）。 */
     table { width: 100%; border-collapse: collapse; }
-    table.vm-table { min-width: 720px; }
-    @media (max-width: 1360px) {
-      table.vm-table { min-width: 640px; }
-      th { padding: 10px 10px; }
-      td { padding: 11px 10px; }
-    }
     th {
       text-align: left; padding: 11px 14px; background: var(--bg-soft);
       font-size: 11px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase;
@@ -539,12 +529,63 @@
     }
     tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
-    .vm-name { font-weight: 700; }
-    .vm-sub { margin-top: 3px; color: var(--text-3); font-size: 12px; }
     .ops { display: flex; gap: 6px; flex-wrap: wrap; }
 
-    /* 状态：用颜色圆点替代文字徽标 */
-    .vm-status-cell { width: 56px; text-align: center; }
+    /* 虚拟机：两行卡片。操作用行内 ⋯，不占独立列。祖先上不要加
+       transform/filter，以免弄坏 #vm-ops-menu 的 fixed 定位。 */
+    .vm-list {
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--rl); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .vm-row { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .vm-row:last-child { border-bottom: 0; }
+    .vm-row:hover { background: var(--bg-soft); }
+    .vm-line1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .vm-line2 {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px;
+      min-width: 0; margin-top: 6px; font-size: 12.5px;
+    }
+    .vm-state {
+      flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap;
+    }
+    .vm-name {
+      flex: 0 1 auto; min-width: 60px; margin: 0;
+      font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text;
+    }
+    .vm-region {
+      flex: 0 0 auto; color: var(--text-3); font-size: 12.5px; font-family: var(--mono);
+      white-space: nowrap;
+    }
+    .vm-kv { display: inline-flex; align-items: baseline; gap: 5px; flex: 0 0 auto; min-width: 0; }
+    .vm-kv > i { font-style: normal; font-size: 11.5px; font-weight: 650; color: var(--text-3); }
+    .vm-kv > b { font-weight: 650; color: var(--text-2); font-variant-numeric: tabular-nums; }
+    .vm-kv > b.mono { font-family: var(--mono); font-size: 12px; }
+    .vm-kv.size > b { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vm-kv.ip > b { color: var(--text); }
+    .vm-kv > b.vm-none { color: var(--text-3); font-weight: 500; }
+    .vm-sep { flex: 0 0 auto; width: 1px; height: 10px; background: var(--line-3); }
+    .vm-alloc {
+      flex: 0 0 auto; display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
+      border-radius: 5px; border: 1px solid var(--line); background: var(--bg-soft);
+      font-size: 11px; font-weight: 650; white-space: nowrap; color: var(--text-2);
+    }
+    .vm-alloc.static  { color: var(--text); border-color: var(--line-3); }
+    .vm-alloc.unknown { background: transparent; border-style: dashed; color: var(--text-3); }
+    .vm-state-box {
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--rl); box-shadow: var(--shadow);
+    }
+    @media (max-width: 1360px) {
+      .vm-kv.disk { display: none; }
+    }
+    @media (max-width: 1180px) {
+      .vm-row { padding: 14px 16px; }
+    }
+    @media (max-width: 720px) {
+      .vm-name { font-size: 14px; }
+    }
 
     /* 切换账户时的加载占位 */
     .vm-loading {
@@ -559,23 +600,26 @@
     }
     @keyframes vmSpin { to { transform: rotate(360deg); } }
     .dot {
-      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
-      background: #9ca3af; vertical-align: middle;
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-3); vertical-align: middle;
     }
-    .dot.ok   { background: #10b981; box-shadow: 0 0 0 3px color-mix(in srgb, #10b981 18%, transparent); }
-    .dot.err  { background: #ef4444; box-shadow: 0 0 0 3px color-mix(in srgb, #ef4444 16%, transparent); }
-    .dot.warn { background: #f59e0b; box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 18%, transparent); }
-    .dot.inf  { background: #9ca3af; box-shadow: 0 0 0 3px color-mix(in srgb, #9ca3af 16%, transparent); }
+    .dot.ok   { background: var(--ok); }
+    .dot.err  { background: var(--err); }
+    .dot.warn { background: var(--amber); }
+    .dot.inf  { background: var(--text-3); }
 
-    /* 操作：单个按钮 + 浮窗菜单 */
+    /* 行内 ⋯，样式对齐 insight 条上的刷新图标按钮 */
     .ops-trigger {
-      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-      border: 1px solid var(--line); background: var(--bg-card); color: var(--text);
-      border-radius: var(--r); padding: 5px 9px; font-size: 12px; font-weight: 650; white-space: nowrap;
-      transition: border-color var(--t), background var(--t);
+      flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; padding: 0; cursor: pointer;
+      border: 1px solid transparent; border-radius: 6px;
+      background: transparent; color: var(--text-3);
+      transition: background var(--t), color var(--t), border-color var(--t);
     }
-    .ops-trigger:hover, .ops-trigger.active { border-color: var(--line-3); background: var(--bg-soft); }
-    .ops-trigger svg { width: 11px; height: 11px; color: var(--text-3); }
+    .ops-trigger:hover, .ops-trigger.active, .ops-trigger[aria-expanded="true"] {
+      background: var(--bg-hover); color: var(--text); border-color: var(--line);
+    }
+    .ops-trigger svg { width: 16px; height: 16px; }
     .ops-menu {
       position: fixed; z-index: 200; min-width: 148px; padding: 5px;
       background: var(--bg-card); border: 1px solid var(--line); border-radius: 10px;
@@ -664,7 +708,7 @@
     .guide-num {
       width: 22px; height: 22px; border-radius: 999px; flex-shrink: 0;
       display: inline-grid; place-items: center;
-      background: linear-gradient(135deg, #1783ff, #0b5fbf); color: #fff;
+      background: var(--pr); color: #fff;
       font-size: 11px; font-weight: 700;
     }
     .guide-step p, .guide-step li { color: var(--text-2); font-size: 13px; line-height: 1.7; }
@@ -686,7 +730,7 @@
 
     .cred-box {
       display: grid; gap: 8px; padding: 14px; border-radius: var(--r);
-      background: var(--ok-bg); border: 1px solid rgba(5,150,105,0.28);
+      background: var(--ok-bg); border: 1px solid color-mix(in srgb, var(--ok) 32%, transparent);
     }
     .cred-title { font-weight: 750; color: var(--ok-text); }
     .cred-row {
@@ -697,7 +741,7 @@
     .cred-v { font-family: var(--mono); word-break: break-all; }
     .copy-btn {
       height: 28px; padding: 0 10px; border-radius: 8px;
-      border: 1px solid rgba(5,150,105,0.32); background: var(--bg-card); color: var(--ok-text);
+      border: 1px solid color-mix(in srgb, var(--ok) 36%, transparent); background: var(--bg-card); color: var(--ok-text);
       font-size: 12px; font-weight: 600;
     }
 
@@ -718,8 +762,11 @@
       max-height: 180px; overflow: auto; color: var(--text-2);
     }
 
+    /* 提示堆在右下角，而不是右上角：右上角是账户头部的「账户详情 / 刷新全部 /
+       创建虚拟机」和弹窗关闭按钮所在的位置，堆在上面会把主按钮整块盖住——
+       「刷新全部」之后紧接着点「创建虚拟机」正好是这个碰撞的必然触发路径。 */
     #tc {
-      position: fixed; top: 18px; right: 18px; z-index: 3000;
+      position: fixed; right: 18px; bottom: 18px; z-index: 3000;
       display: flex; flex-direction: column; gap: 8px; pointer-events: none;
     }
     .toast {
@@ -731,16 +778,20 @@
     .t-ok  { border-left: 3px solid var(--ok); }
     .t-err { border-left: 3px solid var(--err); }
     @keyframes toastIn {
-      from { opacity: 0; transform: translateX(10px); }
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: none; }
     }
 
     @media (max-width: 720px) {
       .sidebar { position: fixed; left: 0; top: 0; transform: translateX(0); }
       .sidebar.col { transform: translateX(calc(-1 * var(--sw) + var(--scw))); }
+      /* 侧栏脱离文档流后必须给内容让出它的宽度，否则内容左缘被压住 64px */
+      .content { padding-left: var(--scw); }
       .page { padding: 20px 14px 32px; }
       .page-title { font-size: 22px; }
       .page-head { flex-direction: column; align-items: stretch; }
+      .vm-toolbar { flex-direction: column; }
+      .vm-toolbar .fi:last-child { width: 100%; }
     }
   </style>
 </head>
@@ -945,21 +996,8 @@
                     <option value="stopped">已停止</option>
                   </select>
                 </div>
-                <div class="tw">
-                  <table class="vm-table">
-                    <thead>
-                      <tr>
-                        <th>状态</th>
-                        <th>虚拟机</th>
-                        <th>规格</th>
-                        <th>开机</th>
-                        <th>公网 IP</th>
-                        <th>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody id="vm-tbody"></tbody>
-                  </table>
-                </div>
+                <!-- 一台 VM 一行。role 由 renderVms() 按状态切换。 -->
+                <div id="vm-list" class="vm-list"></div>
               </div>
               <div id="vtab-tasks" class="hidden">
                 <div id="task-list" class="task-list"></div>
@@ -1491,6 +1529,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
 
 <div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
 
-<script src="/app.js?v=20260918a"></script>
+<script src="/app.js?v=20260918d"></script>
 </body>
 </html>

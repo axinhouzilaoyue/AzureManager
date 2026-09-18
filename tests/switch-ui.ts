@@ -74,11 +74,11 @@ async function waitFor(url: string, attempts = 120): Promise<void> {
 /** Reads the visible VM rows from the table. */
 const readRows = (page: any) =>
   page.evaluate(() =>
-    [...document.querySelectorAll("#vm-tbody .vm-name")].map((el: any) => el.textContent.trim()),
+    [...document.querySelectorAll("#vm-list .vm-name")].map((el: any) => el.textContent.trim()),
   );
 
 const readTableText = (page: any) =>
-  page.evaluate(() => document.getElementById("vm-tbody")?.textContent ?? "");
+  page.evaluate(() => document.getElementById("vm-list")?.textContent ?? "");
 
 async function main(): Promise<void> {
   if (!puppeteer) {
@@ -162,6 +162,7 @@ async function main(): Promise<void> {
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
     const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 900 });
     const consoleErrors: string[] = [];
     const seenUrls: string[] = [];
     page.on("pageerror", (err: Error) => consoleErrors.push(String(err)));
@@ -214,7 +215,7 @@ async function main(): Promise<void> {
 
     await clickAccount(ACCOUNT_A_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
       { timeout: 20000 },
     );
     check("account A shows A's VMs", (await readRows(page)).join(",") === "vm-A-1,vm-A-2",
@@ -222,7 +223,7 @@ async function main(): Promise<void> {
 
     await clickAccount(ACCOUNT_B_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
       { timeout: 20000 },
     );
     check("account B shows B's VMs", (await readRows(page)).join(",") === "vm-B-1,vm-B-2",
@@ -255,7 +256,7 @@ async function main(): Promise<void> {
     // Going back to A warms A's UI, then the click sequence A -> B races.
     await clickAccount(ACCOUNT_B_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
       { timeout: 20000 },
     );
 
@@ -268,7 +269,7 @@ async function main(): Promise<void> {
     const waitForB = async (): Promise<string[]> => {
       try {
         await page.waitForFunction(
-          () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
+          () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
           { timeout: 20000 },
         );
       } catch {
@@ -313,13 +314,147 @@ async function main(): Promise<void> {
       `payload account=${bPayload?.accountId} names=${JSON.stringify((bPayload?.items ?? []).map((v: any) => v.name))}`,
     );
 
+    section("2b. VM row layout: required fields, no table, ⋯ on the identity line");
+
+    const rowShape = await page.evaluate(() => {
+      const row = document.querySelector("#vm-list .vm-row");
+      if (!row) return null;
+      const trigger = row.querySelector(".vm-line1 .ops-trigger") as HTMLElement | null;
+      const name = row.querySelector(".vm-name") as HTMLElement | null;
+      const kvLabels = [...row.querySelectorAll(".vm-kv > i")].map((el: any) => el.textContent.trim());
+      return {
+        isTable: Boolean(document.querySelector("table.vm-table")) || Boolean(document.querySelector("#vm-list table")),
+        role: document.getElementById("vm-list")?.getAttribute("role"),
+        statusText: row.querySelector(".vm-state")?.textContent?.trim() ?? "",
+        name: name?.textContent?.trim() ?? "",
+        region: row.querySelector(".vm-region")?.textContent?.trim() ?? "",
+        kvLabels,
+        hasRail: Boolean(row.querySelector(".vm-rail")),
+        triggerOnLine1: Boolean(trigger),
+        triggerText: trigger?.textContent?.trim() ?? "",
+        triggerLabel: trigger?.getAttribute("aria-label") ?? "",
+        triggerExpanded: trigger?.getAttribute("aria-expanded") ?? null,
+        triggerControls: trigger?.getAttribute("aria-controls") ?? null,
+        sameRowAsName: Boolean(
+          trigger && name
+            && Math.abs(trigger.getBoundingClientRect().top - name.getBoundingClientRect().top) < 24,
+        ),
+      };
+    });
+    console.log(`  vm row shape: ${JSON.stringify(rowShape)}`);
+    check("the VM list is no longer a <table>", rowShape !== null && rowShape.isTable === false, JSON.stringify(rowShape));
+    check("the list exposes list semantics", rowShape?.role === "list", String(rowShape?.role));
+    check("状态 is shown as text, not colour alone", /运行中|已停止|停止中|启动中|创建中|未知/.test(rowShape?.statusText ?? ""), String(rowShape?.statusText));
+    check("名称 is present", (rowShape?.name ?? "").length > 0, String(rowShape?.name));
+    check(
+      "区域 sits next to the name, not as a resource-group chip",
+      rowShape?.region === "eastus",
+      JSON.stringify(rowShape?.region),
+    );
+    check(
+      "the second line carries 规格 / 开机 / 公网 IP labels",
+      ["规格", "开机时间", "公网 IP"].every((label) => (rowShape?.kvLabels ?? []).includes(label)),
+      JSON.stringify(rowShape?.kvLabels),
+    );
+    check("there is no dedicated operations column", rowShape?.hasRail === false, JSON.stringify(rowShape));
+    check(
+      "操作 is an icon on the identity line",
+      rowShape?.triggerOnLine1 === true && rowShape?.sameRowAsName === true && rowShape?.triggerText === "",
+      JSON.stringify(rowShape),
+    );
+    check(
+      "the 操作 trigger announces its state",
+      rowShape?.triggerLabel === "操作"
+        && rowShape?.triggerExpanded === "false"
+        && rowShape?.triggerControls === "vm-ops-menu",
+      `label=${rowShape?.triggerLabel} expanded=${rowShape?.triggerExpanded} controls=${rowShape?.triggerControls}`,
+    );
+
+    // 静态/动态 must be stated, and "unreported" must not look like 动态.
+    const allocStates = await page.evaluate(() => {
+      const mk = (vm: any) => {
+        const row = (window as any).vmRowHtml
+          ? (window as any).vmRowHtml(vm, 0)
+          : "";
+        return row;
+      };
+      const probe = (alloc: string | null, ip: string) =>
+        mk({ name: "vm-x", status: "VM running", location: "eastus", vmSize: "Standard_B1s",
+             resourceGroup: "rg-x", publicIp: ip, ipAllocationMethod: alloc, diskSizeGb: 64, uptimeDays: 3 });
+      return { static: probe("Static", "20.1.2.3"), dynamic: probe("Dynamic", "20.1.2.3"),
+               unknown: probe(null, "20.1.2.3"), none: probe("Static", "N/A") };
+    });
+    check("a Static IP is labelled 静态", /vm-alloc static[^>]*>静态/.test(allocStates.static));
+    check("a Dynamic IP is labelled 动态", /vm-alloc dynamic[^>]*>动态/.test(allocStates.dynamic));
+    check(
+      "an unreported allocation method is labelled 未知, not 动态",
+      /vm-alloc unknown[^>]*>未知/.test(allocStates.unknown) && !/动态/.test(allocStates.unknown),
+      allocStates.unknown.slice(0, 200),
+    );
+    check(
+      "no public IP shows 无 and no allocation badge",
+      /vm-none[^>]*>无/.test(allocStates.none) && !/vm-alloc/.test(allocStates.none),
+      allocStates.none.slice(0, 200),
+    );
+
+    // Narrow viewports must keep ⋯ on the identity line, not a full-width band.
+    await page.setViewport({ width: 760, height: 900 });
+    await Bun.sleep(250);
+    const narrowOps = await page.evaluate(() => {
+      const row = document.querySelector("#vm-list .vm-row");
+      if (!row) return null;
+      const trigger = row.querySelector(".ops-trigger") as HTMLElement | null;
+      const name = row.querySelector(".vm-name") as HTMLElement | null;
+      if (!trigger || !name) return null;
+      const t = trigger.getBoundingClientRect();
+      const n = name.getBoundingClientRect();
+      return {
+        hasRail: Boolean(row.querySelector(".vm-rail")),
+        sameRow: Math.abs(t.top - n.top) < 24,
+        triggerW: Math.round(t.width),
+      };
+    });
+    console.log(`  narrow ops: ${JSON.stringify(narrowOps)}`);
+    check(
+      "at 760px 操作 stays on the identity line as a compact icon",
+      narrowOps?.hasRail === false && narrowOps?.sameRow === true && (narrowOps?.triggerW ?? 99) <= 36,
+      JSON.stringify(narrowOps),
+    );
+    await page.setViewport({ width: 1440, height: 900 });
+    await Bun.sleep(200);
+
+    // A deallocating VM is transitioning: amber, not the red "stopped" colour.
+    const statusCases = await page.evaluate(() =>
+      ["VM running", "VM deallocating", "VM deallocated", "VM stopping", "VM stopped", "VM starting", ""]
+        .map((raw) => {
+          const v = (window as any).vmStatusView?.(raw);
+          return { raw: raw || "(empty)", label: v?.label, dot: v?.dot };
+        }),
+    );
+    console.log(`  status mapping: ${JSON.stringify(statusCases)}`);
+    const byRaw = Object.fromEntries(statusCases.map((c: any) => [c.raw, c]));
+    check(
+      "deallocating maps to the amber transitional state, not red",
+      byRaw["VM deallocating"]?.label === "停止中" && byRaw["VM deallocating"]?.dot === "warn",
+      JSON.stringify(byRaw["VM deallocating"]),
+    );
+    check(
+      "deallocated maps to the red stopped state",
+      byRaw["VM deallocated"]?.label === "已停止" && byRaw["VM deallocated"]?.dot === "err",
+      JSON.stringify(byRaw["VM deallocated"]),
+    );
+    check(
+      "a stopped VM reads 未开机 rather than a missing-data dash",
+      await page.evaluate(() => (window as any).formatUptime({ status: "VM deallocated" }) === "未开机"),
+    );
+
     section("3. Switching back is served from cache");
 
     await page.evaluate(() => { window.fetch = (window as any).__origFetch; });
     const started = Date.now();
     await clickAccount(ACCOUNT_A_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
       { timeout: 20000 },
     );
     const switchMs = Date.now() - started;
@@ -336,7 +471,7 @@ async function main(): Promise<void> {
 
     await clickAccount(ACCOUNT_A_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-A-1")),
       { timeout: 20000 },
     );
     // Give the cost load time to resolve and (incorrectly) paint a banner.
@@ -515,6 +650,19 @@ async function main(): Promise<void> {
 
     section("8. The create-VM region picker reports what it resolved");
 
+    // Toasts used to sit in the top-right corner, exactly on top of the account
+    // header's actions, so the primary CTA could not be clicked right after a
+    // refresh. Click it while a toast is still on screen to keep that fixed.
+    await page.evaluate(() => (window as any).toast?.("回归用提示", "success"));
+    const ctaBlocked = await page.evaluate(() => {
+      const btn = document.getElementById("btn-create-vm");
+      if (!btn) return "no button";
+      const r = btn.getBoundingClientRect();
+      const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+      return hit && (hit === btn || btn.contains(hit)) ? "" : `covered by ${hit?.className || hit?.tagName}`;
+    });
+    check("the create-VM button is not covered while a toast is visible", ctaBlocked === "", String(ctaBlocked));
+
     // The mock ARM has no locations, so this exercises the failure path: the
     // dialog used to sit on "加载中..." forever and silently submit an empty
     // region. It must now say so instead.
@@ -548,23 +696,212 @@ async function main(): Promise<void> {
       /Policy|策略|订阅/.test(regionState.hint),
       JSON.stringify(regionState.hint),
     );
-    // Toasts stack over the top-right corner where the modal's close button sits,
-    // so wait for the previous section's toasts to expire before clicking it.
-    await page.waitForFunction(
-      () => document.querySelectorAll("#tc .toast").length === 0,
-      { timeout: 10000 },
-    );
     await page.click("#mo-create-vm .md-x");
     await page.waitForSelector("#mo-create-vm.hidden", { timeout: 10000 });
 
-    section("9. Layout screenshots for manual review");
+    section("9. Responsive matrix: no horizontal scroll, nothing clipped");
 
+    // The mock fixture uses short names/sizes, which would make every width pass
+    // for the wrong reason. The layout was designed against these worst-case
+    // strings, so measure the real renderer with them: "每个账号一般最多创建
+    // 两台机器" is exactly two rows.
+    const WORST_CASE = [
+      {
+        name: "vm-southeastasia-prod-01",
+        status: "VM running",
+        location: "southeastasia",
+        resourceGroup: "rg-southeastasia-prod",
+        vmSize: "Standard_NC24ads_A100_v4",
+        publicIp: "20.243.185.117",
+        ipAllocationMethod: "Static",
+        diskSizeGb: 128,
+        uptimeDays: 259,
+      },
+      {
+        name: "vm-japaneast-prod-02",
+        status: "VM deallocated",
+        location: "japaneast",
+        resourceGroup: "rg-japaneast-prod",
+        vmSize: "Standard_D8s_v5",
+        publicIp: "N/A",
+        diskSizeGb: 64,
+        uptimeDays: 412,
+      },
+    ];
+    await page.evaluate((fixture) => {
+      const host = document.getElementById("vm-list");
+      if (!host) throw new Error("#vm-list missing");
+      host.setAttribute("role", "list");
+      // vmRowHtml is a global in the classic script, so this is the production renderer.
+      host.innerHTML = (window as any).vmRowHtml
+        ? fixture.map((vm: any, i: number) => (window as any).vmRowHtml(vm, i)).join("")
+        : "";
+    }, WORST_CASE);
+    const rendered = await page.evaluate(() => document.querySelectorAll("#vm-list .vm-row").length);
+    check("the worst-case fixture rendered through the production renderer", rendered === 2, `${rendered} rows`);
+
+    const measure = () =>
+      page.evaluate(() => {
+        const q = (sel: string) => document.querySelector(sel) as HTMLElement | null;
+        const over = (el: Element | null) => (el ? el.scrollWidth - el.clientWidth : 0);
+        const rect = (el: Element | null) => {
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width };
+        };
+        const rows = [...document.querySelectorAll("#vm-list .vm-row")];
+        const list = q("#vm-list");
+        const content = q(".content");
+        const disk = rows[0]?.querySelector(".vm-kv.disk") ?? null;
+        const names = rows.map((r) => r.querySelector(".vm-name"));
+        const lines = rows.flatMap((r) => [...r.querySelectorAll(".vm-line1, .vm-line2")]);
+        const worst = (els: (Element | null)[]) => Math.max(0, ...els.map(over));
+        return {
+          doc: { scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth },
+          body: { scroll: document.body.scrollWidth, client: document.body.clientWidth },
+          content: content ? { scroll: content.scrollWidth, client: content.clientWidth } : null,
+          list: list ? { scroll: list.scrollWidth, client: list.clientWidth } : null,
+          worstRow: worst(rows),
+          worstLine: worst(lines),
+          nameOverflow: worst(names as (Element | null)[]),
+          names: rows.map((r) => {
+            const n = r.querySelector(".vm-name") as HTMLElement | null;
+            return {
+              text: n?.textContent ?? "",
+              client: n?.clientWidth ?? 0,
+              scroll: n?.scrollWidth ?? 0,
+              state: rect(r.querySelector(".vm-state")),
+              region: rect(r.querySelector(".vm-region")),
+            };
+          }),
+          diskVisible: disk ? getComputedStyle(disk).display !== "none" : false,
+          gridCols: rows[0] ? getComputedStyle(rows[0]).gridTemplateColumns : "",
+          listRect: rect(list),
+          rowRect: rect(rows[0] ?? null),
+          triggerRect: rect(rows[0]?.querySelector(".ops-trigger") ?? null),
+          ipRect: rect(rows[0]?.querySelector(".vm-kv.ip") ?? null),
+          tcRect: rect(q("#tc")),
+          viewport: window.innerWidth,
+          region: (() => {
+            const el = rows[0]?.querySelector(".vm-region") as HTMLElement | null;
+            return el ? { text: el.textContent ?? "", scroll: el.scrollWidth, client: el.clientWidth } : null;
+          })(),
+        };
+      });
+
+    // 1600 → 600 covers sidebar collapse (1360), 系统盘 drop (1360),
+    // pane stacks (1040), right-anchors reset (720).
+    const MATRIX = [1600, 1440, 1366, 1361, 1360, 1280, 1181, 1180, 1100, 1041, 1040, 981, 900, 801, 800, 720, 600];
+    for (const width of MATRIX) {
+      await page.setViewport({ width, height: 900 });
+      await Bun.sleep(200);
+      // A real toast, so the fixed-position stack is measured too.
+      await page.evaluate(() => {
+        document.querySelectorAll("#tc .toast").forEach((el) => el.remove());
+        (window as any).toast?.("横向溢出量测用的提示文本，长度足以顶到 max-width 上限");
+      });
+      await Bun.sleep(60);
+      const m = await measure();
+      const offenders: string[] = [];
+      if (m.doc.scroll > m.doc.client) offenders.push(`document ${m.doc.scroll}>${m.doc.client}`);
+      if (m.body.scroll > m.body.client) offenders.push(`body ${m.body.scroll}>${m.body.client}`);
+      if (m.content && m.content.scroll > m.content.client) {
+        offenders.push(`.content ${m.content.scroll}>${m.content.client}`);
+      }
+      if (m.list && m.list.scroll > m.list.client) offenders.push(`#vm-list ${m.list.scroll}>${m.list.client}`);
+      if (m.worstRow > 1) offenders.push(`row +${m.worstRow}px`);
+      if (m.worstLine > 1) offenders.push(`line +${m.worstLine}px`);
+      if (m.nameOverflow > 1) {
+        offenders.push(
+          `name clipped +${m.nameOverflow}px [${m.names
+            .map(
+              (n) =>
+                `${n.text} ${n.scroll}>${n.client}` +
+                ` state=${n.state ? n.state.width.toFixed(0) : "?"}` +
+                ` region=${n.region ? n.region.width.toFixed(0) : "?"}`,
+            )
+            .join(" | ")}]`,
+        );
+      }
+      check(`[${width}px] nothing overflows horizontally`, offenders.length === 0, offenders.join(", "));
+
+      const inside: string[] = [];
+      const limit = m.viewport + 0.5;
+      if (!m.triggerRect) inside.push("no ops trigger");
+      else {
+        if (m.triggerRect.right > limit) inside.push(`trigger right ${m.triggerRect.right.toFixed(1)} > ${limit}`);
+        if (m.triggerRect.left < -0.5) inside.push(`trigger left ${m.triggerRect.left.toFixed(1)}`);
+        if (m.triggerRect.right > (m.listRect?.right ?? limit) + 0.5) {
+          inside.push(`trigger right ${m.triggerRect.right.toFixed(1)} > list ${m.listRect?.right.toFixed(1)}`);
+        }
+      }
+      if (m.tcRect && m.tcRect.right > limit) inside.push(`toast right ${m.tcRect.right.toFixed(1)} > ${limit}`);
+      if (m.ipRect && m.ipRect.right > (m.listRect?.right ?? limit) + 0.5) inside.push("ip escapes the row");
+      check(`[${width}px]操作按钮与提示堆都在视口内`, inside.length === 0, inside.join(", "));
+
+      // Progressive disclosure must actually fire, not just be declared in CSS.
+      const expectDisk = width > 1360;
+      check(
+        `[${width}px] 系统盘 ${expectDisk ? "保留" : "已退场"}`,
+        m.diskVisible === expectDisk,
+        `disk visible=${m.diskVisible} cols=${m.gridCols}`,
+      );
+
+      check(
+        `[${width}px] 区域完整显示`,
+        Boolean(m.region) && m.region!.scroll <= m.region!.client + 1,
+        `region ${m.region?.text} ${m.region?.scroll}>${m.region?.client}`,
+      );
+    }
+
+    // 600px 以下：名称允许省略（这是 .vm-name 的 ellipsis + title 兜底路径），
+    // 但横向滚动和出界的操作按钮在任何宽度下都不允许出现。
+    section("9b. Degradation band (< 600px still never scrolls sideways)");
+    for (const width of [560, 480, 390]) {
+      await page.setViewport({ width, height: 780 });
+      await Bun.sleep(200);
+      const m = await measure();
+      const offenders: string[] = [];
+      if (m.doc.scroll > m.doc.client) offenders.push(`document ${m.doc.scroll}>${m.doc.client}`);
+      if (m.content && m.content.scroll > m.content.client) {
+        offenders.push(`.content ${m.content.scroll}>${m.content.client}`);
+      }
+      if (m.worstRow > 1) offenders.push(`row +${m.worstRow}px`);
+      check(`[${width}px] 仍然没有横向滚动`, offenders.length === 0, offenders.join(", "));
+      check(
+        `[${width}px] 操作按钮仍在视口内`,
+        Boolean(m.triggerRect) && m.triggerRect!.right <= m.viewport + 0.5,
+        `trigger=${JSON.stringify(m.triggerRect)} viewport=${m.viewport}`,
+      );
+      check(
+        `[${width}px] 名称以省略号收敛而不是溢出`,
+        m.nameOverflow >= 0 && Boolean(m.names[0]?.text),
+        `name ${m.names[0]?.scroll}>${m.names[0]?.client}`,
+      );
+      check(
+        `[${width}px] 区域仍在`,
+        (m.region?.client ?? 0) > 0,
+        `region=${m.region?.text}:${m.region?.client}`,
+      );
+    }
+
+    section("10. Layout screenshots for manual review");
+
+    await page.setViewport({ width: 1440, height: 900 });
     await clickAccount(ACCOUNT_B_ID);
     await page.waitForFunction(
-      () => [...document.querySelectorAll("#vm-tbody .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
+      () => [...document.querySelectorAll("#vm-list .vm-name")].some((el: any) => el.textContent.includes("vm-B-1")),
       { timeout: 20000 },
     );
-    for (const [label, width, height] of [["desktop", 1440, 900], ["narrow", 800, 700]] as const) {
+    // The worst-case fixture lives only in this section; restore the real list for
+    // the reference screenshots by rendering straight from the app's cache.
+    await page.evaluate(() => (window as any).renderVms?.());
+    for (const [label, width, height] of [
+      ["desktop", 1440, 900],
+      ["tight", 1041, 900],
+      ["stacked", 1040, 900],
+      ["narrow", 800, 700],
+    ] as const) {
       await page.setViewport({ width, height });
       await Bun.sleep(400);
       const shotPath = `${REPO_ROOT}/.tmp/accounts-layout-${label}.png`;

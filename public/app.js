@@ -279,16 +279,25 @@ function showAccList() {
   showAccountListView();
 }
 
-function vmStatusLabel(status) {
-  const s = String(status || '').toLowerCase();
-  if (!s) return '未知';
-  if (s.includes('running')) return '运行中';
-  if (s.includes('deallocat')) return s.includes('deallocating') ? '停止中' : '已停止';
-  if (s.includes('stopping')) return '停止中';
-  if (s.includes('stopped')) return '已停止';
-  if (s.includes('starting')) return '启动中';
-  if (s.includes('creating')) return '创建中';
-  return status;
+/**
+ * Single source of truth for a VM's status label + dot colour.
+ *
+ * Order matters: "VM deallocating" is a *transition*, but the old split helpers
+ * matched the "deallocat" prefix before checking "stopping", so a deallocating
+ * VM showed the stopped (red) dot while its label read 停止中. Transitional
+ * states are matched first here.
+ */
+function vmStatusView(status) {
+  const raw = String(status || '').trim();
+  const s = raw.toLowerCase();
+  if (!s) return { label: '未知', dot: 'inf', raw };
+  if (s.includes('running')) return { label: '运行中', dot: 'ok', raw };
+  if (s.includes('creating')) return { label: '创建中', dot: 'warn', raw };
+  if (s.includes('starting')) return { label: '启动中', dot: 'warn', raw };
+  if (s.includes('updating')) return { label: '更新中', dot: 'warn', raw };
+  if (s.includes('stopping') || s.includes('deallocating')) return { label: '停止中', dot: 'warn', raw };
+  if (s.includes('stopped') || s.includes('deallocated')) return { label: '已停止', dot: 'err', raw };
+  return { label: raw, dot: 'inf', raw };
 }
 
 function daysUntil(dateStr) {
@@ -1110,10 +1119,13 @@ async function loadVmsFor(accId, { force = false } = {}) {
   }
 }
 
+/**
+ * Uptime for a running VM, or a semantic "not started" — `-` would read as
+ * "data missing", which is a different thing from "this machine is switched off".
+ */
 function formatUptime(vm) {
   const ps = String(vm.status || '').toLowerCase();
-  const running = ps.includes('running');
-  if (!running) return { text: '-', sub: '' };
+  if (!ps.includes('running')) return '未开机';
 
   let days = typeof vm.uptimeDays === 'number' ? vm.uptimeDays : null;
   if (days === null && vm.timeCreated) {
@@ -1122,12 +1134,8 @@ function formatUptime(vm) {
       days = Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
     }
   }
-  if (days === null) return { text: '-', sub: '' };
-  if (days <= 0) return { text: '不足 1 天', sub: vm.timeCreated ? `创建于 ${String(vm.timeCreated).slice(0, 10)}` : '' };
-  return {
-    text: `${days} 天`,
-    sub: vm.timeCreated ? `创建于 ${String(vm.timeCreated).slice(0, 10)}` : '',
-  };
+  if (days === null) return '—';
+  return days <= 0 ? '不足 1 天' : `${days} 天`;
 }
 
 function filteredVms() {
@@ -1145,15 +1153,6 @@ function filteredVms() {
   });
 }
 
-function vmDotClass(status) {
-  const s = String(status || '').toLowerCase();
-  if (s.includes('running')) return 'ok';
-  if (s.includes('deallocat') || s.includes('stopped')) return 'err';
-  if (!s) return 'inf';
-  if (s.includes('starting') || s.includes('stopping') || s.includes('creating') || s.includes('updating')) return 'warn';
-  return 'inf';
-}
-
 function renderVmsStaleNote(entry) {
   const host = $('vm-stale-note');
   if (!host) return;
@@ -1168,9 +1167,51 @@ function renderVmsStaleNote(entry) {
   host.innerHTML = `<div class="err-box" style="margin-bottom:10px">${esc(text)}</div>`;
 }
 
+/** One VM = one row: identity on top, parameters below, ⋯ on the identity line. */
+function vmRowHtml(vm, index) {
+  const st = vmStatusView(vm.status);
+  const uptime = formatUptime(vm);
+  const hasIp = Boolean(vm.publicIp) && vm.publicIp !== 'N/A';
+  const ipText = hasIp ? vm.publicIp : '';
+  const alloc = !hasIp ? ''
+    : vm.ipAllocationMethod === 'Static' ? '<span class="vm-alloc static">静态</span>'
+    : vm.ipAllocationMethod === 'Dynamic' ? '<span class="vm-alloc dynamic">动态</span>'
+    : '<span class="vm-alloc unknown" title="Azure 未返回分配方式">未知</span>';
+  const label = [
+    vm.name, st.label, vm.location, vm.vmSize, `开机时间 ${uptime}`,
+    hasIp ? `公网 IP ${ipText}` : '无公网 IP',
+  ].filter(Boolean).join('，');
+  return `
+    <article class="vm-row" role="listitem" aria-label="${esc(label)}">
+      <div class="vm-line1">
+        <span class="vm-state ${st.dot}" title="${esc(st.raw || st.label)}">
+          <span class="dot ${st.dot}" aria-hidden="true"></span>${esc(st.label)}
+        </span>
+        <h3 class="vm-name" title="${esc(vm.name)}">${esc(vm.name)}</h3>
+        ${vm.location ? `<span class="vm-region" title="区域">${esc(vm.location)}</span>` : ''}
+        <button class="ops-trigger" type="button" data-vm-ops="${index}"
+                aria-label="操作" aria-haspopup="menu" aria-expanded="false" aria-controls="vm-ops-menu">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="vm-line2">
+        <span class="vm-kv size"><i>规格</i><b class="mono" title="${esc(vm.vmSize || '')}">${esc(vm.vmSize || '—')}</b></span>
+        ${vm.diskSizeGb ? `<span class="vm-sep" aria-hidden="true"></span>
+        <span class="vm-kv disk"><i>系统盘</i><b>${esc(String(vm.diskSizeGb))} GB</b></span>` : ''}
+        <span class="vm-sep" aria-hidden="true"></span>
+        <span class="vm-kv"><i>开机时间</i><b>${esc(uptime)}</b></span>
+        <span class="vm-kv ip"><i>公网 IP</i>${
+          hasIp ? `<b class="mono" title="${esc(ipText)}">${esc(ipText)}</b>` : '<b class="vm-none">无</b>'
+        }${alloc}</span>
+      </div>
+    </article>`;
+}
+
 function renderVms() {
-  const tb = $('vm-tbody');
-  if (!tb) return;
+  const host = $('vm-list');
+  if (!host) return;
   const rows = filteredVms();
   S.renderedVms = rows;
   closeVmOpsMenu(true);
@@ -1180,70 +1221,54 @@ function renderVms() {
   const items = entry?.vms || [];
   renderVmsStaleNote(entry);
 
+  /** State boxes are not lists, so the list role has to travel with the content. */
+  const stateBox = (html) => {
+    host.className = 'vm-state-box';
+    host.removeAttribute('role');
+    host.innerHTML = html;
+  };
+
   if (!known || (S.vmsLoading && !items.length)) {
-    tb.innerHTML = `<tr><td colspan="6" style="padding:0">
-      <div class="vm-loading">
-        <span class="vm-spinner" aria-hidden="true"></span>正在加载虚拟机…
-      </div>
-    </td></tr>`;
+    host.className = 'vm-list';
+    host.removeAttribute('role');
+    host.innerHTML = `<div class="vm-loading">
+      <span class="vm-spinner" aria-hidden="true"></span>正在加载虚拟机…
+    </div>`;
     return;
   }
 
   // A failed fetch must never be rendered as "this subscription has no VMs".
   if (entry.error && !items.length) {
-    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
-      <div class="err-box" style="border:none;background:transparent;padding:12px">
-        <strong>${entry.code === 'azure_timeout' ? 'Azure 查询超时' : '虚拟机列表加载失败'}</strong>
-        <div class="muted small" style="margin-top:6px">${esc(entry.error)}</div>
-        <div style="margin-top:10px"><button class="btn btn-p" type="button" onclick="refreshWorkspace()">重试</button></div>
-      </div>
-    </td></tr>`;
+    stateBox(`<div class="err-box" style="border:none;background:transparent;padding:20px">
+      <strong>${entry.code === 'azure_timeout' ? 'Azure 查询超时' : '虚拟机列表加载失败'}</strong>
+      <div class="muted small" style="margin-top:6px">${esc(entry.error)}</div>
+      <div style="margin-top:10px"><button class="btn btn-p" type="button" onclick="refreshWorkspace()">重试</button></div>
+    </div>`);
     return;
   }
 
   if (!items.length) {
-    tb.innerHTML = `<tr><td colspan="6" style="padding:36px">
-      <div class="empty" style="border:none;background:transparent;padding:12px">
-        <h3>此订阅下暂无虚拟机</h3>
-        <p>点击右上角「创建虚拟机」开始。</p>
-      </div>
-    </td></tr>`;
+    // "No VMs yet" is the highest-frequency state for a ≤2-VM account, so the
+    // create action lives here instead of pointing at the toolbar.
+    stateBox(`<div class="empty" style="border:none;background:transparent">
+      <h3>此订阅下暂无虚拟机</h3>
+      <p>创建一台即可开始管理。</p>
+      <button class="btn btn-p" style="margin-top:8px" type="button" onclick="openCreateVmDialog()">创建虚拟机</button>
+    </div>`);
     return;
   }
 
   if (!rows.length) {
-    tb.innerHTML = `<tr><td colspan="6" style="padding:36px"><div class="empty" style="border:none;background:transparent;padding:12px"><h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p></div></td></tr>`;
+    stateBox(`<div class="empty" style="border:none;background:transparent">
+      <h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p>
+    </div>`);
     return;
   }
 
-  tb.innerHTML = rows.map((vm, index) => {
-    const ps = vmStatusLabel(vm.status);
-    const dot = vmDotClass(vm.status);
-    const uptime = formatUptime(vm);
-    const specs = [vm.vmSize, vm.diskSizeGb ? `系统盘 ${vm.diskSizeGb} GB` : null]
-      .filter(Boolean).map(esc).join('</div><div class="vm-sub">');
-    const ipSub = vm.ipAllocationMethod === 'Dynamic' ? '<div class="vm-sub">动态</div>' : '';
-    return `<tr>
-      <td class="vm-status-cell">
-        <span class="dot ${dot}" role="img" aria-label="${esc(ps)}" title="${esc(ps)}"></span>
-      </td>
-      <td>
-        <div class="vm-name">${esc(vm.name)}</div>
-        <div class="vm-sub">${esc([vm.resourceGroup, vm.location].filter(Boolean).join(' · ') || '-')}</div>
-      </td>
-      <td>${specs ? `<div>${specs}</div>` : '-'}</td>
-      <td>
-        <div>${esc(uptime.text)}</div>
-        ${uptime.sub ? `<div class="vm-sub">${esc(uptime.sub)}</div>` : ''}
-      </td>
-      <td class="mono">${esc(vm.publicIp || '-')}${ipSub}</td>
-      <td>
-        <button class="ops-trigger" type="button" data-vm-ops="${index}" aria-haspopup="menu">操作
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-      </td>
-    </tr>`;
-  }).join('');
+  host.className = 'vm-list';
+  host.setAttribute('role', 'list');
+  host.setAttribute('aria-label', '虚拟机列表');
+  host.innerHTML = rows.map((vm, index) => vmRowHtml(vm, index)).join('');
 }
 
 let vmOpsAnchor = null;
@@ -1258,6 +1283,7 @@ function closeVmOpsMenu(force = false) {
     menu.innerHTML = '';
   }
   vmOpsAnchor?.classList.remove('active');
+  vmOpsAnchor?.setAttribute('aria-expanded', 'false');
   vmOpsAnchor = null;
 }
 
@@ -1296,6 +1322,7 @@ function openVmOpsMenu(btn) {
   vmOpsAnchor = btn;
   vmOpsOpenedAt = Date.now();
   btn.classList.add('active');
+  btn.setAttribute('aria-expanded', 'true');
   menu.classList.remove('hidden');
 
   const rect = btn.getBoundingClientRect();
@@ -1686,6 +1713,36 @@ async function showTaskDetail(taskId) {
 window.showTaskDetail = showTaskDetail;
 
 // ── create VM ─────────────────────────────────────────────────
+/** Opens the create-VM dialog for the selected account with clean defaults. */
+async function openCreateVmDialog() {
+  if (!S.selectedAccId) {
+    toast('请先选择一个 Azure 账户', 'error');
+    return;
+  }
+  S.createVmAccountId = S.selectedAccId;
+  // Restore safe defaults each time the dialog opens.
+  if ($('create-name')) $('create-name').value = '';
+  if ($('create-username')) $('create-username').value = '';
+  if ($('create-password')) $('create-password').value = '';
+  if ($('create-disk')) $('create-disk').value = '64';
+  if ($('create-disk-type')) $('create-disk-type').value = 'Premium_LRS';
+  if ($('create-ip')) $('create-ip').value = 'Dynamic';
+  if ($('create-use-global-ssh')) $('create-use-global-ssh').checked = false;
+  if ($('create-enable-root')) $('create-enable-root').checked = false;
+  if ($('create-nsg-enabled')) $('create-nsg-enabled').checked = true;
+  if ($('create-nsg-ports')) $('create-nsg-ports').value = '22';
+  if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = false;
+  if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = false;
+  openModal('mo-create-vm');
+  if (!S.regions.length) await loadRegions();
+  const loc = $('create-region')?.value || S.regions[0]?.name || '';
+  if (loc) {
+    loadVmSizes(loc, 'Standard_B1s');
+    loadIpPermission(loc);
+  }
+}
+window.openCreateVmDialog = openCreateVmDialog;
+
 async function submitCreateVm() {
   const btn = $('btn-submit-vm');
   if (!S.createVmAccountId) {
@@ -2339,29 +2396,7 @@ function bindUI() {
     if (t.closest('#btn-logout')) return void doLogout();
     if (t.closest('#login-btn')) return void doLogin();
     if (t.closest('#btn-back-accounts')) return void backToAccountList();
-    if (t.closest('#btn-create-vm')) {
-      // Restore safe defaults each time the dialog opens.
-      if ($('create-name')) $('create-name').value = '';
-      if ($('create-username')) $('create-username').value = '';
-      if ($('create-password')) $('create-password').value = '';
-      if ($('create-disk')) $('create-disk').value = '64';
-      if ($('create-disk-type')) $('create-disk-type').value = 'Premium_LRS';
-      if ($('create-ip')) $('create-ip').value = 'Dynamic';
-      if ($('create-use-global-ssh')) $('create-use-global-ssh').checked = false;
-      if ($('create-enable-root')) $('create-enable-root').checked = false;
-      if ($('create-nsg-enabled')) $('create-nsg-enabled').checked = true;
-      if ($('create-nsg-ports')) $('create-nsg-ports').value = '22';
-      if ($('create-nsg-all-inbound')) $('create-nsg-all-inbound').checked = false;
-      if ($('create-nsg-all-outbound')) $('create-nsg-all-outbound').checked = false;
-      openModal('mo-create-vm');
-      if (!S.regions.length) await loadRegions();
-      const loc = $('create-region')?.value || S.regions[0]?.name || '';
-      if (loc) {
-        loadVmSizes(loc, 'Standard_B1s');
-        loadIpPermission(loc);
-      }
-      return;
-    }
+    if (t.closest('#btn-create-vm')) return void openCreateVmDialog();
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
     if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
     if (t.closest('#btn-refresh-summary')) return void refreshAccountSummary(S.selectedAccId);
@@ -2391,7 +2426,7 @@ function bindUI() {
 
   // Close the VM ops menu on escape, scroll or resize.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeVmOpsMenu();
+    if (e.key === 'Escape') closeVmOpsMenu(true);
   });
   window.addEventListener('scroll', () => closeVmOpsMenu(), true);
   window.addEventListener('resize', () => closeVmOpsMenu());
