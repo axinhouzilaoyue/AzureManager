@@ -156,7 +156,7 @@ export async function getAzureCosts(
   if (mtd.failed || !isNumericCost(mtd.cost)) {
     const reason = mtd.warning ?? "本月消费查询失败";
     if (cachedMtd !== null) {
-      mtdText = cached!.mtd as string;
+      mtdText = formatCost(cachedMtd);
       status = "cached";
       warnings.push(`本月消费：${reason}，已沿用上一次成功结果`);
     } else {
@@ -173,7 +173,7 @@ export async function getAzureCosts(
       };
     }
   } else {
-    mtdText = mtd.cost;
+    mtdText = formatCost(Number(mtd.cost));
     freshMtd = true;
   }
 
@@ -209,7 +209,7 @@ export async function getAzureCosts(
     if (yearly.failed || !isNumericCost(yearly.cost)) {
       const reason = yearly.warning ?? "未获取";
       if (cachedAcc !== null) {
-        accumulated = cached!.acc as string;
+        accumulated = formatCost(cachedAcc);
         history = cachedHistory !== null ? formatCost(cachedHistory) : "未获取";
         status = status === "ok" ? "cached" : status;
         warnings.push(`累计消费：${reason}，已沿用上一次成功结果`);
@@ -236,7 +236,7 @@ export async function getAzureCosts(
   if (cachedAcc !== null) {
     const current = numericOrNull(accumulated);
     if (current !== null && current < cachedAcc) {
-      accumulated = cached!.acc as string;
+      accumulated = formatCost(cachedAcc);
       if (cachedHistory !== null) history = formatCost(cachedHistory);
     }
   }
@@ -423,7 +423,7 @@ function parseCostResponse(data: CostResponse | null): { cost: string; currency:
   if (!Number.isFinite(numeric)) {
     return { cost: "0.00", currency: rawCurrency ? String(rawCurrency) : "" };
   }
-  return { cost: String(numeric), currency: rawCurrency ? String(rawCurrency) : "" };
+  return { cost: formatCost(numeric), currency: rawCurrency ? String(rawCurrency) : "" };
 }
 
 function parseAzureError(bodyText: string): AzureErrorPayload {

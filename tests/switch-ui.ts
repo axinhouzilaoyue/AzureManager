@@ -423,6 +423,32 @@ async function main(): Promise<void> {
     await page.setViewport({ width: 1440, height: 900 });
     await Bun.sleep(200);
 
+    check(
+      "VM search is gone (an account has at most two machines)",
+      await page.evaluate(() => document.getElementById("vm-search") === null),
+    );
+    const spread = await page.evaluate(() => {
+      const row = document.querySelector("#vm-list .vm-row");
+      const line = row?.querySelector(".vm-line2") as HTMLElement | null;
+      const kvs = line ? [...line.querySelectorAll(".vm-kv")] : [];
+      if (!line || kvs.length < 2) return null;
+      const lr = line.getBoundingClientRect();
+      const first = kvs[0].getBoundingClientRect();
+      const last = kvs[kvs.length - 1].getBoundingClientRect();
+      return {
+        count: kvs.length,
+        lineW: Math.round(lr.width),
+        span: Math.round(last.right - first.left),
+        rightGap: Math.round(lr.right - last.right),
+      };
+    });
+    console.log(`  vm field spread: ${JSON.stringify(spread)}`);
+    check(
+      "on desktop the VM fields span the row instead of clustering left",
+      Boolean(spread) && spread!.span >= spread!.lineW * 0.85 && spread!.rightGap <= 24,
+      JSON.stringify(spread),
+    );
+
     // A deallocating VM is transitioning: amber, not the red "stopped" colour.
     const statusCases = await page.evaluate(() =>
       ["VM running", "VM deallocating", "VM deallocated", "VM stopping", "VM stopped", "VM starting", ""]
@@ -546,11 +572,11 @@ async function main(): Promise<void> {
       const pick = (label: string) =>
         cells.find((c) => c.querySelector("i")?.textContent === label)?.querySelector("b")?.textContent ?? "";
       return {
-        labels: cells.map((c) => c.querySelector("i")?.textContent ?? ""),
+        labels: cells.map((c) => c.querySelector("i")?.textContent ?? "").filter(Boolean),
         mtd: pick("本月"),
         acc: pick("累计"),
         history: pick("历史"),
-        updated: pick("消费更新"),
+        updated: document.querySelector("#account-insights .ib-time b")?.textContent ?? "",
       };
     });
     console.log(`  cost cells after refresh: ${JSON.stringify(costCell)}`);
@@ -560,13 +586,17 @@ async function main(): Promise<void> {
       costCell.acc !== "查询中…" && costCell.acc !== "未获取",
       JSON.stringify(costCell));
     check(
-      "the redundant 历史 cell is gone (quota + month + accumulated + timestamp only)",
-      costCell.labels.join(",") === "AI 配额,本月,累计,消费更新",
+      "insight labels are quota + month + accumulated (timestamp is unlabeled)",
+      costCell.labels.join(",") === "AI 配额,本月,累计",
       JSON.stringify(costCell.labels),
     );
     check("the cost timestamp is a real timestamp (not a loading placeholder)",
       /\d/.test(costCell.updated) && costCell.updated !== "查询中…" && costCell.updated !== "尚未查询",
       JSON.stringify(costCell));
+    check(
+      "numeric costs render with two decimal places",
+      await page.evaluate(() => (window as any).formatCostAmount("0.689965277777778") === "0.69"),
+    );
 
     // The edit dialog must expose every field that creation collects.
     await page.evaluate((id: string | null) => (window as any).openEditAccount(id), selectedViaDom);

@@ -22,8 +22,6 @@ const S = {
   accountDetails: {},
   revealedAccountSecret: false,
   detailsAccountId: null, // account the open details modal belongs to
-  vmSearch: '',
-  vmStatusFilter: 'all',
   renderedVms: [],
   vmsLoading: false,
   createVmAccountId: null, // account the create-VM dialog was opened for
@@ -121,6 +119,23 @@ function shortId(id) {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+/** Numeric costs always show 2 decimal places; status labels pass through. */
+function formatCostAmount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : String(value);
+}
+
+function formatCostUpdatedAt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (d.toDateString() === new Date().toDateString()) return `${hh}:${mm}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -202,21 +217,24 @@ function renderFleetList(items) {
     return;
   }
 
-  list.innerHTML = items.map((vm) => `
+  list.innerHTML = items.map((vm) => {
+    const st = vmStatusView(vm.status);
+    const hasIp = Boolean(vm.publicIp) && vm.publicIp !== 'N/A' && vm.publicIp !== '-';
+    return `
     <div class="fleet-row" onclick='openVmView(${jsq(vm.accountId)})'>
-      <div style="min-width:0">
+      <div class="fleet-cell">
         <div class="fleet-name">${esc(vm.name)}</div>
         <div class="fleet-sub">${esc(vm.accountLabel || '-')}</div>
       </div>
-      <div style="min-width:0">
-        <div style="font-size:13px;font-weight:600">${esc(vm.location || '-')}</div>
+      <div class="fleet-cell">
+        <div class="fleet-loc">${esc(vm.location || '-')}</div>
         <div class="fleet-sub">${esc(vm.vmSize || '-')}</div>
       </div>
-      <div>${statusBadge(vm.status)}</div>
-      <div style="font-size:13px;font-weight:650">${esc(fleetUptimeText(vm))}</div>
-      <div class="fleet-ip">${esc(vm.publicIp || '-')}</div>
-    </div>
-  `).join('');
+      <div class="fleet-status ${st.dot}"><span class="dot ${st.dot}" aria-hidden="true"></span>${esc(st.label)}</div>
+      <div class="fleet-uptime">${esc(fleetUptimeText(vm))}</div>
+      <div class="fleet-ip"${hasIp ? ` data-copy="${esc(vm.publicIp)}" title="点击复制"` : ''}>${esc(hasIp ? vm.publicIp : '无')}</div>
+    </div>`;
+  }).join('');
 
   if (meta) meta.textContent = `${items.length} 台机器 · ${S.accounts.length} 个账户`;
 }
@@ -421,8 +439,8 @@ function renderAccountDetailsModal(account) {
   const secret = detail.clientSecret || '尚未读取';
   const secretText = S.revealedAccountSecret ? secret : '••••••••••••';
   const currency = detail.costCurrency ? ` ${detail.costCurrency}` : '';
-  const mtd = detail.costMtd ?? '未获取';
-  const acc = detail.costAcc ?? '未获取';
+  const mtd = formatCostAmount(detail.costMtd) ?? '未获取';
+  const acc = formatCostAmount(detail.costAcc) ?? '未获取';
   const updatedAt = detail.costUpdatedAt ? new Date(detail.costUpdatedAt).toLocaleString() : '未查询';
   const rawWarning = detail.costWarning || '';
   const warning = rawWarning.length > 180 ? `${rawWarning.slice(0, 180)}…` : rawWarning;
@@ -679,8 +697,8 @@ async function loadAccountStats(accountId, { force = false } = {}) {
 function updateAccountSortLabels() {
   const nameBtn = $('btn-sort-account-name');
   const expiryBtn = $('btn-sort-account-expiry');
-  if (nameBtn) nameBtn.textContent = S.accountSort === 'nameAsc' ? '名称 ↑' : S.accountSort === 'nameDesc' ? '名称 ↓' : '名称排序';
-  if (expiryBtn) expiryBtn.textContent = S.accountSort === 'expiryAsc' ? '到期 ↑' : S.accountSort === 'expiryDesc' ? '到期 ↓' : '到期排序';
+  if (nameBtn) nameBtn.textContent = S.accountSort === 'nameAsc' ? '名称 ↑' : S.accountSort === 'nameDesc' ? '名称 ↓' : '名称 ⇅';
+  if (expiryBtn) expiryBtn.textContent = S.accountSort === 'expiryAsc' ? '到期 ↑' : S.accountSort === 'expiryDesc' ? '到期 ↓' : '到期 ⇅';
 }
 
 function cycleAccountSort(kind) {
@@ -799,25 +817,21 @@ function renderAccountInsights(accountId) {
   const loading = data.loading ? '查询中…' : '';
   const currency = data.currency || account?.costCurrency || '';
   const unit = currency ? ` ${currency}` : '';
-  const mtd = data.mtd ?? account?.costMtd;
-  const acc = data.acc ?? account?.costAcc;
+  const mtd = formatCostAmount(data.mtd ?? account?.costMtd);
+  const acc = formatCostAmount(data.acc ?? account?.costAcc);
   const quota = data.quotaTier || account?.quotaTier || '未获取';
   const notice = insightNotice?.accountId === accountId ? insightNotice.message : '';
-  const mtdText = mtd !== null && mtd !== undefined && mtd !== ''
-    ? `${mtd}${unit}`
-    : (loading || '未获取');
-  const accText = acc !== null && acc !== undefined && acc !== ''
-    ? `${acc}${unit}`
-    : '未获取';
+  const mtdText = mtd !== null ? `${mtd}${unit}` : (loading || '未获取');
+  const accText = acc !== null ? `${acc}${unit}` : '未获取';
   const updateText = account?.costUpdatedAt
-    ? new Date(account.costUpdatedAt).toLocaleString()
-    : (loading ? '查询中…' : '尚未查询');
+    ? formatCostUpdatedAt(account.costUpdatedAt)
+    : (loading ? '查询中…' : '');
   host.innerHTML = `
     <div class="insight-bar">
       <span class="ib"><i>AI 配额</i><b>${esc(quota)}</b></span>
       <span class="ib"><i>本月</i><b>${esc(mtdText)}</b></span>
       <span class="ib"><i>累计</i><b>${esc(accText)}</b></span>
-      <span class="ib ib-time"><i>消费更新</i><b>${esc(updateText)}</b></span>
+      ${updateText ? `<span class="ib ib-time" title="消费数据更新时间"><b>${esc(updateText)}</b></span>` : ''}
       <button class="ib-refresh${S.summaryRefreshing ? ' spinning' : ''}" type="button" id="btn-refresh-summary"
               title="刷新 AI 配额与本月/累计消费" aria-label="刷新 AI 配额与消费"
               ${S.summaryRefreshing ? 'disabled' : ''}>
@@ -989,10 +1003,6 @@ async function openVmView(accId, e) {
   if (e) e.stopPropagation();
   S.selectedAccId = accId;
   S.activeVTab = 'vms';
-  S.vmSearch = '';
-  S.vmStatusFilter = 'all';
-  if ($('vm-search')) $('vm-search').value = '';
-  if ($('vm-status-filter')) $('vm-status-filter').value = 'all';
   document.querySelectorAll('.tab[data-vtab]').forEach(x => {
     x.classList.toggle('active', x.dataset.vtab === 'vms');
   });
@@ -1138,21 +1148,6 @@ function formatUptime(vm) {
   return days <= 0 ? '不足 1 天' : `${days} 天`;
 }
 
-function filteredVms() {
-  const query = S.vmSearch.trim().toLowerCase();
-  return (currentVmsEntry()?.vms || []).filter((vm) => {
-    const status = String(vm.status || '').toLowerCase();
-    const matchesStatus = S.vmStatusFilter === 'all'
-      || (S.vmStatusFilter === 'running' && status.includes('running'))
-      || (S.vmStatusFilter === 'stopped' && (status.includes('stopped') || status.includes('deallocat')));
-    if (!matchesStatus) return false;
-    if (!query) return true;
-    return [vm.name, vm.resourceGroup, vm.publicIp, vm.location, vm.vmSize]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
-}
-
 function renderVmsStaleNote(entry) {
   const host = $('vm-stale-note');
   if (!host) return;
@@ -1198,13 +1193,13 @@ function vmRowHtml(vm, index) {
       </div>
       <div class="vm-line2">
         <span class="vm-kv size"><i>规格</i><b class="mono" title="${esc(vm.vmSize || '')}">${esc(vm.vmSize || '—')}</b></span>
-        ${vm.diskSizeGb ? `<span class="vm-sep" aria-hidden="true"></span>
-        <span class="vm-kv disk"><i>系统盘</i><b>${esc(String(vm.diskSizeGb))} GB</b></span>` : ''}
-        <span class="vm-sep" aria-hidden="true"></span>
+        ${vm.diskSizeGb ? `<span class="vm-kv disk"><i>系统盘</i><b>${esc(String(vm.diskSizeGb))} GB</b></span>` : ''}
         <span class="vm-kv"><i>开机时间</i><b>${esc(uptime)}</b></span>
         <span class="vm-kv ip"><i>公网 IP</i>${
-          hasIp ? `<b class="mono" title="${esc(ipText)}">${esc(ipText)}</b>` : '<b class="vm-none">无</b>'
-        }${alloc}</span>
+          hasIp
+            ? `<span class="vm-val" data-copy="${esc(ipText)}" title="点击复制"><b class="mono">${esc(ipText)}</b>${alloc}</span>`
+            : '<b class="vm-none">无</b>'
+        }</span>
       </div>
     </article>`;
 }
@@ -1212,13 +1207,12 @@ function vmRowHtml(vm, index) {
 function renderVms() {
   const host = $('vm-list');
   if (!host) return;
-  const rows = filteredVms();
-  S.renderedVms = rows;
   closeVmOpsMenu(true);
 
   const entry = currentVmsEntry();
   const known = !!entry;
   const items = entry?.vms || [];
+  S.renderedVms = items;
   renderVmsStaleNote(entry);
 
   /** State boxes are not lists, so the list role has to travel with the content. */
@@ -1249,7 +1243,7 @@ function renderVms() {
 
   if (!items.length) {
     // "No VMs yet" is the highest-frequency state for a ≤2-VM account, so the
-    // create action lives here instead of pointing at the toolbar.
+    // create action lives here instead of pointing at a toolbar.
     stateBox(`<div class="empty" style="border:none;background:transparent">
       <h3>此订阅下暂无虚拟机</h3>
       <p>创建一台即可开始管理。</p>
@@ -1258,17 +1252,10 @@ function renderVms() {
     return;
   }
 
-  if (!rows.length) {
-    stateBox(`<div class="empty" style="border:none;background:transparent">
-      <h3>没有匹配的虚拟机</h3><p>请调整搜索或状态筛选。</p>
-    </div>`);
-    return;
-  }
-
   host.className = 'vm-list';
   host.setAttribute('role', 'list');
   host.setAttribute('aria-label', '虚拟机列表');
-  host.innerHTML = rows.map((vm, index) => vmRowHtml(vm, index)).join('');
+  host.innerHTML = items.map((vm, index) => vmRowHtml(vm, index)).join('');
 }
 
 let vmOpsAnchor = null;
@@ -2328,6 +2315,16 @@ function showApp() {
 }
 
 function bindUI() {
+  // Capture phase so copying an IP does not also trigger the fleet-row onclick.
+  document.addEventListener('click', (e) => {
+    const el = e.target instanceof Element ? e.target.closest('[data-copy]') : null;
+    const value = el?.getAttribute('data-copy');
+    if (!value) return;
+    e.preventDefault();
+    e.stopPropagation();
+    copyText(value);
+  }, true);
+
   // Event delegation keeps nav/toggle working even if individual bindings fail.
   document.addEventListener('click', async (e) => {
     const t = e.target;
@@ -2448,14 +2445,6 @@ function bindUI() {
   });
   on('account-import-file', 'change', (e) => {
     importAccountsFromFile(e.target?.files?.[0]);
-  });
-  on('vm-search', 'input', (e) => {
-    S.vmSearch = e.target?.value || '';
-    renderVms();
-  });
-  on('vm-status-filter', 'change', (e) => {
-    S.vmStatusFilter = e.target?.value || 'all';
-    renderVms();
   });
 
   const accGrid = $('acc-grid');

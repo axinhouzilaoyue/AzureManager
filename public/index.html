@@ -259,7 +259,7 @@
 
     .content { flex: 1; min-width: 0; height: 100vh; overflow: auto; position: relative; z-index: 1; }
     .page { padding: 28px clamp(18px, 3vw, 40px) 40px; max-width: 1180px; }
-    #pg-accounts { max-width: none; padding-left: clamp(14px, 1.6vw, 22px); padding-right: clamp(14px, 1.6vw, 22px); }
+    #pg-accounts { max-width: none; padding-top: 18px; padding-left: clamp(14px, 1.6vw, 22px); padding-right: clamp(14px, 1.6vw, 22px); }
     .page.hidden { display: none !important; }
 
     .page-head {
@@ -280,23 +280,6 @@
     .card-t { font-size: 14px; font-weight: 700; }
     .card-b { padding: 18px; }
 
-    .hero {
-      position: relative; overflow: hidden;
-      background: var(--bg-card); border: 1px solid var(--line);
-      border-radius: var(--rl); box-shadow: var(--shadow);
-      padding: 28px 30px; margin-bottom: 14px;
-    }
-    .hero-bg {
-      position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
-      font-size: 72px; font-weight: 900; letter-spacing: -0.04em;
-      color: color-mix(in srgb, var(--text) 5%, transparent);
-      user-select: none; pointer-events: none; line-height: 1;
-    }
-    .hero-kicker { color: var(--text-2); font-size: 13px; margin-bottom: 6px; }
-    .hero-title { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }
-    .hero-desc { margin-top: 8px; color: var(--text-2); font-size: 13px; max-width: 540px; }
-    .hero-actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
-
     .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
     @media (max-width: 860px) { .stat-grid { grid-template-columns: 1fr; } }
     .stat {
@@ -305,6 +288,7 @@
     }
     .stat-label { color: var(--text-2); font-size: 12px; font-weight: 600; }
     .stat-value { margin-top: 8px; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }
+    .stat-value.ok { color: var(--ok); }
     .stat-note { margin-top: 6px; color: var(--text-3); font-size: 12px; }
 
     .fleet-list { display: flex; flex-direction: column; }
@@ -322,7 +306,17 @@
     .fleet-row:hover { background: var(--bg-soft); }
     .fleet-name { font-weight: 720; font-size: 14px; }
     .fleet-sub { margin-top: 3px; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fleet-cell { min-width: 0; }
+    .fleet-loc { font-size: 13px; font-weight: 600; }
+    .fleet-uptime { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
     .fleet-ip { font-family: var(--mono); font-size: 12px; color: var(--text); }
+    .fleet-ip[data-copy], .vm-val[data-copy] { cursor: pointer; border-radius: 4px; }
+    .fleet-ip[data-copy]:hover { color: var(--accent-text); }
+    .vm-val[data-copy]:hover > b { color: var(--accent-text); }
+    .fleet-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap;
+    }
     .fleet-empty { padding: 48px 20px; }
     @media (max-width: 900px) {
       .fleet-row {
@@ -341,13 +335,14 @@
     }
     .acc-card:hover { background: var(--bg-soft); }
     .acc-card.selected {
-      background: var(--bg-hover);
-      border-color: var(--line);
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
     }
     .acc-card.dragging { opacity: 0.45; }
     .acc-drag {
-      width: 12px; opacity: 0; cursor: grab; color: var(--text-3); font-size: 12px; line-height: 1;
+      width: 12px; opacity: 0; cursor: grab; color: var(--text-3); font-size: 14px; line-height: 1;
     }
+    .acc-drag:active { cursor: grabbing; }
     .acc-card:hover .acc-drag, .acc-card.selected .acc-drag { opacity: 1; }
     .acc-name {
       font-size: 13px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3;
@@ -444,9 +439,6 @@
       padding: 8px 10px; margin-bottom: 10px; border-radius: 8px; background: var(--amber-soft);
       border: 1px solid var(--amber-line); color: var(--amber-text); font-size: 12px;
     }
-    .vm-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
-    .vm-toolbar .fi:first-child { flex: 1; }
-    .vm-toolbar .fi:last-child { width: 160px; }
     .account-detail-grid {
       display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
     }
@@ -486,14 +478,6 @@
       .acc-head-top { flex-direction: column; align-items: stretch; }
       .acc-actions { justify-content: flex-start; }
     }
-    .acc-card.dragging { opacity: 0.5; transform: none; }
-    .acc-drag { cursor: grab; color: var(--text-3); font-size: 16px; line-height: 1; }
-    .acc-drag:active { cursor: grabbing; }
-    .insight-grid {
-      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px;
-    }
-    @media (max-width: 900px) { .insight-grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 560px) { .insight-grid { grid-template-columns: 1fr; } }
     .check-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; }
     .check-row input { margin-top: 3px; }
 
@@ -531,7 +515,7 @@
     tbody tr:hover td { background: color-mix(in srgb, var(--bg-soft) 45%, transparent); }
     .ops { display: flex; gap: 6px; flex-wrap: wrap; }
 
-    /* 虚拟机：两行卡片。操作用行内 ⋯，不占独立列。祖先上不要加
+    /* 虚拟机：身份行 + 全宽参数列。操作用行内 ⋯，不占独立列。祖先上不要加
        transform/filter，以免弄坏 #vm-ops-menu 的 fixed 定位。 */
     .vm-list {
       background: var(--bg-card); border: 1px solid var(--line);
@@ -542,15 +526,19 @@
     .vm-row:hover { background: var(--bg-soft); }
     .vm-line1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .vm-line2 {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 5px 12px;
-      min-width: 0; margin-top: 6px; font-size: 12.5px;
+      display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px 24px;
+      min-width: 0; margin-top: 12px; padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
     }
     .vm-state {
       flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
       font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap;
     }
+    .vm-state.ok, .fleet-status.ok { color: var(--ok-text); }
+    .vm-state.err, .fleet-status.err { color: var(--err-text); }
+    .vm-state.warn, .fleet-status.warn { color: var(--amber-text); }
     .vm-name {
-      flex: 0 1 auto; min-width: 60px; margin: 0;
+      flex: 1 1 auto; min-width: 60px; margin: 0;
       font-size: 15px; font-weight: 700; letter-spacing: -0.01em; color: var(--text);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text;
     }
@@ -558,14 +546,19 @@
       flex: 0 0 auto; color: var(--text-3); font-size: 12.5px; font-family: var(--mono);
       white-space: nowrap;
     }
-    .vm-kv { display: inline-flex; align-items: baseline; gap: 5px; flex: 0 0 auto; min-width: 0; }
-    .vm-kv > i { font-style: normal; font-size: 11.5px; font-weight: 650; color: var(--text-3); }
-    .vm-kv > b { font-weight: 650; color: var(--text-2); font-variant-numeric: tabular-nums; }
-    .vm-kv > b.mono { font-family: var(--mono); font-size: 12px; }
-    .vm-kv.size > b { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .vm-kv.ip > b { color: var(--text); }
+    .vm-kv {
+      flex: 1 1 0; min-width: 0; max-width: 100%;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .vm-kv > i { font-style: normal; font-size: 11px; font-weight: 650; color: var(--text-3); }
+    .vm-kv > b, .vm-val > b {
+      font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .vm-kv > b.mono, .vm-val > b.mono { font-family: var(--mono); font-size: 12.5px; }
+    .vm-kv.ip { flex: 1.25 1 0; user-select: text; }
     .vm-kv > b.vm-none { color: var(--text-3); font-weight: 500; }
-    .vm-sep { flex: 0 0 auto; width: 1px; height: 10px; background: var(--line-3); }
+    .vm-val { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
     .vm-alloc {
       flex: 0 0 auto; display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
       border-radius: 5px; border: 1px solid var(--line); background: var(--bg-soft);
@@ -585,6 +578,8 @@
     }
     @media (max-width: 720px) {
       .vm-name { font-size: 14px; }
+      .vm-line2 { gap: 10px 16px; }
+      .vm-kv { flex: 1 1 calc(50% - 8px); }
     }
 
     /* 切换账户时的加载占位 */
@@ -610,7 +605,7 @@
 
     /* 行内 ⋯，样式对齐 insight 条上的刷新图标按钮 */
     .ops-trigger {
-      flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; padding: 0; cursor: pointer;
       border: 1px solid transparent; border-radius: 6px;
       background: transparent; color: var(--text-3);
@@ -618,6 +613,9 @@
     }
     .ops-trigger:hover, .ops-trigger.active, .ops-trigger[aria-expanded="true"] {
       background: var(--bg-hover); color: var(--text); border-color: var(--line);
+    }
+    .ops-trigger:focus-visible, .ni:focus-visible, .tab:focus-visible, .ib-refresh:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 1px;
     }
     .ops-trigger svg { width: 16px; height: 16px; }
     .ops-menu {
@@ -790,8 +788,6 @@
       .page { padding: 20px 14px 32px; }
       .page-title { font-size: 22px; }
       .page-head { flex-direction: column; align-items: stretch; }
-      .vm-toolbar { flex-direction: column; }
-      .vm-toolbar .fi:last-child { width: 100%; }
     }
   </style>
 </head>
@@ -904,7 +900,7 @@
           </div>
           <div class="stat">
             <div class="stat-label">运行中</div>
-            <div class="stat-value" id="stat-running" style="color:#059669">0</div>
+            <div class="stat-value ok" id="stat-running">0</div>
             <div class="stat-note" id="stat-running-note">停机 0</div>
           </div>
         </div>
@@ -922,13 +918,6 @@
 
       <!-- Accounts / VMs -->
       <section class="page hidden" id="pg-accounts">
-        <div class="page-head">
-          <div>
-            <div class="page-title">账户工作台</div>
-            <div class="page-sub">左侧常驻账户列表，右侧管理当前账户的虚拟机</div>
-          </div>
-        </div>
-
         <div class="accounts-layout">
           <aside class="account-pane" id="view-acc-list">
             <div class="account-pane-head">
@@ -959,7 +948,7 @@
           <main class="account-main">
             <div id="account-empty" class="empty account-empty">
               <h3>选择一个 Azure 账户</h3>
-              <p>点击左侧账户后，这里会立即展示添加时填写的凭据、订阅信息、消费、配额和虚拟机。</p>
+              <p>从左侧点选账户后，这里会显示它的消费、配额和虚拟机。</p>
             </div>
 
             <div id="view-vms" class="hidden">
@@ -988,14 +977,6 @@
 
               <div id="vtab-vms">
                 <div id="vm-stale-note" class="hidden"></div>
-                <div class="vm-toolbar">
-                  <input class="fi" id="vm-search" placeholder="搜索虚拟机名称、资源组或 IP" />
-                  <select class="fi" id="vm-status-filter">
-                    <option value="all">全部状态</option>
-                    <option value="running">运行中</option>
-                    <option value="stopped">已停止</option>
-                  </select>
-                </div>
                 <!-- 一台 VM 一行。role 由 renderVms() 按状态切换。 -->
                 <div id="vm-list" class="vm-list"></div>
               </div>
@@ -1049,7 +1030,6 @@
   </div>
 </div>
 
-<!-- Modal: Azure 凭据获取指南 -->
 <!-- Modal: 添加账户 -->
 <div id="mo-add-acc" class="mo hidden">
   <div class="md md-xl">
@@ -1529,6 +1509,6 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
 
 <div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
 
-<script src="/app.js?v=20260918d"></script>
+<script src="/app.js?v=20260918f"></script>
 </body>
 </html>
