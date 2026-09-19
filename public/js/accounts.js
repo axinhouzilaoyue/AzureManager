@@ -100,10 +100,18 @@ function accountCardHtml(a) {
   const state = st.loading ? '' : (st.state ? String(st.state) : (a.subscriptionState || ''));
   const days = daysUntil(a.expirationDate);
   const dayCls = expiryStatClass(a.expirationDate);
-  const dayText = days === null ? '未设置到期日'
-    : days < 0 ? `已过期 ${Math.abs(days)} 天`
-    : days === 0 ? '今天到期'
-    : `剩余 ${days} 天`;
+  // Second line: expiry date on the left, remaining days on the right.
+  let expiryHtml;
+  if (days === null) {
+    expiryHtml = `<span class="acc-expiry-empty">未设置到期日</span>`;
+  } else {
+    const dayLabel = days < 0 ? `已过期 ${Math.abs(days)} 天`
+      : days === 0 ? '今天到期'
+      : `${days} 天`;
+    expiryHtml = `
+      <span class="acc-expiry-date">${esc(a.expirationDate)}</span>
+      <span class="acc-expiry-days ${dayCls}">${esc(dayLabel)}</span>`;
+  }
   const tip = [title, subName, state, a.expirationDate ? `到期 ${a.expirationDate}` : ''].filter(Boolean).join(' · ');
   return `
     <div class="acc-card${S.selectedAccId === a.id ? ' selected' : ''}" data-account-id="${esc(a.id)}"
@@ -111,9 +119,7 @@ function accountCardHtml(a) {
       <span class="acc-drag" draggable="true" title="拖动调整顺序">⠿</span>
       <div style="min-width:0">
         <div class="acc-name">${esc(title)}</div>
-        <div class="acc-meta">
-          <span class="acc-days ${dayCls}">${esc(dayText)}</span>
-        </div>
+        <div class="acc-meta acc-expiry">${expiryHtml}</div>
       </div>
     </div>`;
 }

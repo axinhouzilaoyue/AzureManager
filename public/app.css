@@ -325,7 +325,7 @@
       }
     }
 
-    /* 账户列表：单行紧凑卡片，仅展示邮箱 / VM 台数 / 剩余天数 */
+    /* 账户列表：邮箱 + 到期日 / 剩余天数 */
     .acc-grid { display: grid; grid-template-columns: 1fr; gap: 2px; align-content: start; }
     .acc-card {
       display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center;
@@ -350,8 +350,32 @@
     }
     .acc-meta {
       margin-top: 3px; display: flex; align-items: center; gap: 5px;
-      font-size: 11.5px; color: var(--text-2); white-space: nowrap;
+      font-size: 11.5px; color: var(--text-3); white-space: nowrap;
     }
+    .acc-expiry {
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-3);
+    }
+    .acc-expiry-date {
+      color: var(--text-3);
+      font-weight: 500;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .acc-expiry-days {
+      color: var(--text-3);
+      font-weight: 500;
+      flex: 0 0 auto;
+      text-align: right;
+    }
+    .acc-expiry-empty { color: var(--text-3); }
+    /* Keep a soft urgency tint only when close to expiry; default stays muted gray. */
+    .acc-expiry-days.warn { color: var(--amber-text); }
+    .acc-expiry-days.danger { color: var(--err-text); font-weight: 650; }
     .acc-days.ok { color: var(--ok-text); font-weight: 650; }
     .acc-days.warn { color: var(--amber-text); font-weight: 650; }
     .acc-days.danger { color: var(--err-text); font-weight: 700; }
