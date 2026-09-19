@@ -76,8 +76,13 @@ docker stop azure-manager && docker rm azure-manager
   返回 **410 Gone**（不再提供按 Cookie 取账户的数据路径）。**升级后需刷新页面**。
 - 替代接口：`GET /api/accounts/:accountId/vms`（信封 `{accountId, fetchedAt, items, cached, stale, warning}`）、
   `POST /api/accounts/:accountId/vm-action`、`POST /api/accounts/:accountId/vm-change-ip`、
-  `POST /api/accounts/:accountId/create-vm`。
+  `POST /api/accounts/:accountId/create-vm`、
+  `GET /api/accounts/:accountId/regions`、`GET /api/accounts/:accountId/vm-sizes`、
+  `GET /api/accounts/:accountId/ip-permission`、`GET /api/accounts/:accountId/tasks`、
+  `GET /api/accounts/:accountId/summary`（一次拉订阅/配额/消费/台数）。
+- 旧的 session 绑定读接口 `GET /api/regions`、`/api/vm-sizes`、`/api/ip-permission`、`/api/tasks` 同样返回 **410**。
 - `POST /api/session` 仍保留，但只用于记住「上次查看的账户」，不参与任何数据归属判断。
+- 进程重启时，仍处于 `queued`/`running` 的后台任务会被标为失败（`interrupted_by_restart`），避免永远卡在进行中。
 - 所有 `/api/**` 响应带 `Cache-Control: no-store` 与 `Vary: Cookie`，防止跨账户复用缓存。
 
 性能：进程级 AAD token 复用 + 按账户的 VM 列表 TTL 缓存（默认 30s，失败时最多回退 120s）+ 同账户请求合并（single-flight）。
@@ -90,6 +95,8 @@ docker stop azure-manager && docker rm azure-manager
 
 可调环境变量：`VM_CACHE_TTL_MS`、`VM_CACHE_STALE_MS`、`AZURE_REQUEST_TIMEOUT_MS`、
 `AZURE_TOKEN_TIMEOUT_MS`、`OVERVIEW_ACCOUNT_CONCURRENCY`、`BULK_REFRESH_CONCURRENCY`。
+
+概览页默认走各账户 VM 列表缓存；点「刷新」时带 `?refresh=1` 强制回源。创建 VM 会记住上次的区域/规格/镜像等选项（浏览器 localStorage）。
 
 ## 账户摘要条各字段含义
 
@@ -104,12 +111,25 @@ docker stop azure-manager && docker rm azure-manager
 > 历史消费（累计 − 本月）不再单独展示：它可以直接由「累计 − 本月」看出，
 > 单列一格与累计重复。该值仍在服务端参与 `累计 = 本月 + 缓存历史` 的推算。
 
+## 代码结构（简）
+
+```text
+src/server.ts          # 启动、静态资源、/health
+src/routes/auth.ts     # 登录/登出
+src/routes/api.ts      # 全部 /api/**
+src/lib/…              # db、Azure 客户端、缓存、后台任务
+public/index.html      # 页面骨架
+public/app.css         # 样式
+public/js/*.js         # 前端按域拆分（core / overview / accounts / vms / forms / settings-auth）
+```
+
 ## 测试
 
 ```bash
 bun run typecheck     # 类型检查
 bun run test:regions  # 创建 VM 的区域解析：地理组/非 Compute 区域/Policy 限制过滤
 bun run test:api      # 接口层回归：竞态复现、归属校验、缓存、single-flight、token 复用
+bun run test:verify   # 本轮改造合同：account-scoped 元数据、summary、收尸、静态资源
 bun run test:ui       # 浏览器端到端（需本机 Chrome；puppeteer-core 未安装则自动跳过）
 ```
 

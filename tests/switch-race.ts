@@ -322,15 +322,33 @@ async function main(): Promise<void> {
       const res = await api("POST", legacy, { cookie: racedCookie, body: {} });
       check(`POST ${legacy} returns 410 Gone`, res.status === 410, `status=${res.status}`);
     }
+    for (const legacy of ["/api/regions", "/api/vm-sizes", "/api/ip-permission", "/api/tasks"]) {
+      const res = await api("GET", legacy, { cookie: racedCookie });
+      check(`GET ${legacy} returns 410 Gone`, res.status === 410, `status=${res.status}`);
+    }
 
-    const appSource = readFileSync(`${REPO_ROOT}/public/app.js`, "utf8");
+    const appSource = [
+      "public/app.js",
+      "public/js/core.js",
+      "public/js/overview.js",
+      "public/js/accounts.js",
+      "public/js/vms.js",
+      "public/js/forms.js",
+      "public/js/settings-auth.js",
+    ].map((rel) => {
+      try { return readFileSync(`${REPO_ROOT}/${rel}`, "utf8"); } catch { return ""; }
+    }).join("\n");
     check(
       "client no longer calls the removed cookie-scoped routes",
       !/['"`]\/api\/vms['"`]/.test(appSource)
         && !/['"`]\/api\/vm-action['"`]/.test(appSource)
         && !/['"`]\/api\/vm-change-ip['"`]/.test(appSource)
-        && !/['"`]\/api\/create-vm['"`]/.test(appSource),
-      "found a reference to a removed route in public/app.js",
+        && !/['"`]\/api\/create-vm['"`]/.test(appSource)
+        && !/['"`]\/api\/regions['"`]/.test(appSource)
+        && !/['"`]\/api\/vm-sizes['"`]/.test(appSource)
+        && !/['"`]\/api\/ip-permission['"`]/.test(appSource)
+        && !/['"`]\/api\/tasks['"`]/.test(appSource),
+      "found a reference to a removed route in public frontend sources",
     );
 
     // ---------------------------------------------------------------
@@ -432,20 +450,27 @@ async function main(): Promise<void> {
     const taskId = actionA.body?.taskId;
     check("vm-action returns a taskId", typeof taskId === "string" && taskId.length > 0);
 
-    const tasksUnderB = await api("GET", "/api/tasks", { cookie: cookieB });
+    const tasksUnderB = await api("GET", `/api/accounts/${ACCOUNT_B_ID}/tasks`, { cookie: cookieB });
+    const tasksB = Array.isArray(tasksUnderB.body?.items) ? tasksUnderB.body.items : [];
     check(
-      "the task did NOT land on the cookie account (B)",
-      !(tasksUnderB.body ?? []).some((task: any) => task.id === taskId),
-      `cookie=B tasks=${JSON.stringify((tasksUnderB.body ?? []).map((t: any) => t.id))}`,
+      "the task did NOT land on account B's task list",
+      !tasksB.some((task: any) => task.id === taskId),
+      `account=B tasks=${JSON.stringify(tasksB.map((t: any) => t.id))}`,
     );
 
     const selectAAgain = await api("POST", "/api/session", { cookie: cookieB, body: { accountId: ACCOUNT_A_ID } });
     const cookieA = sessionCookieValue(selectAAgain.setCookies, cookieB)!;
-    const tasksUnderA = await api("GET", "/api/tasks", { cookie: cookieA });
+    const tasksUnderA = await api("GET", `/api/accounts/${ACCOUNT_A_ID}/tasks`, { cookie: cookieA });
+    const tasksA = Array.isArray(tasksUnderA.body?.items) ? tasksUnderA.body.items : [];
     check(
       "the task DID land on the path account (A)",
-      (tasksUnderA.body ?? []).some((task: any) => task.id === taskId),
-      `cookie=A tasks=${JSON.stringify((tasksUnderA.body ?? []).map((t: any) => t.id))}`,
+      tasksA.some((task: any) => task.id === taskId),
+      `account=A tasks=${JSON.stringify(tasksA.map((t: any) => t.id))}`,
+    );
+    check(
+      "account-scoped tasks echo accountId",
+      tasksUnderA.body?.accountId === ACCOUNT_A_ID,
+      `accountId=${tasksUnderA.body?.accountId}`,
     );
 
     const badAction = await api("POST", `/api/accounts/${"99999999-9999-4999-8999-999999999999"}/vm-action`, {

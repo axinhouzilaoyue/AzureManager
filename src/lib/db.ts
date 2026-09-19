@@ -405,6 +405,26 @@ export async function setGlobalSshSettings(env: AppEnv, input: {
   transaction();
 }
 
+/**
+ * Background work lives only in the current process. Anything still queued or
+ * running after a restart can never finish, so mark it failed on boot.
+ */
+export function reapInterruptedTasks(env: AppEnv): number {
+  const timestamp = nowIso();
+  const message = "服务重启，任务已中断（不会自动恢复）";
+  const result = env.DB.prepare(
+    `UPDATE tasks
+        SET status = 'failure',
+            message = ?,
+            error_code = 'interrupted_by_restart',
+            error_message = ?,
+            updated_at = ?,
+            completed_at = COALESCE(completed_at, ?)
+      WHERE status IN ('queued', 'running')`,
+  ).run(message, message, timestamp, timestamp);
+  return Number(result.changes ?? 0);
+}
+
 export async function createTask(env: AppEnv, input: {
   id: string; accountId: string; type: string;
   lockKey: string; createdBy: string; message: string;
