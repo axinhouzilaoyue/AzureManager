@@ -780,6 +780,7 @@ async function openVmView(accId, e) {
 
   // Anything scoped to the previous account must not survive the switch.
   abortVmsReads();
+  abortActivityReads();
   clearInsightNotice();
   S.summaryRefreshing = false;
   S.vmsLoading = !S.vmsCache.has(accId);
@@ -789,7 +790,9 @@ async function openVmView(accId, e) {
   closeModal('mo-confirm');
   closeModal('mo-create-vm');
   closeAccountDetailsModal();
-  renderOpLog([]);
+  // Paint activity immediately from this account's cache (or a loading placeholder).
+  // Do not leave the previous account's tasks/logs on screen for one frame/request.
+  paintActivityFor(accId, { loading: !S.activityCache.has(accId) });
 
   renderVms();
   S.accountInsights[accId] = { ...(S.accountInsights[accId] || {}), loading: true };
@@ -825,6 +828,8 @@ window.openVmView = openVmView;
 function backToAccountList() {
   S.selectedAccId = null;
   abortVmsReads();
+  abortActivityReads();
+  paintActivityFor(null);
   api('DELETE', '/api/session').catch(() => {});
   $('view-vms')?.classList.add('hidden');
   $('account-empty')?.classList.remove('hidden');

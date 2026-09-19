@@ -33,6 +33,10 @@ const S = {
   opLogLines: [],
   // 'tasks' | 'logs' — shared by the bottom panel and the expand modal
   activityTab: 'tasks',
+  // accountId -> { tasks, logs }. Instant paint on switch, same idea as vmsCache.
+  activityCache: new Map(),
+  // accountId -> AbortController for in-flight tasks/logs fetches
+  activityReads: new Map(),
 };
 
 // ── api ───────────────────────────────────────────────────────

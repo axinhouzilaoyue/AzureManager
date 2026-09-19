@@ -4,12 +4,14 @@ async function refreshWorkspace() {
   if (!S.selectedAccId) return;
   const accId = S.selectedAccId;
   abortVmsReads();
+  abortActivityReads();
   S.vmsCache.delete(accId);
+  S.activityCache.delete(accId);
   S.vmsLoading = true;
   S.accountInsights[accId] = { loading: true };
   renderVms();
   renderAccountInsights(accId);
-  renderOpLog([]);
+  paintActivityFor(accId, { loading: true });
   await Promise.allSettled([
     loadVmsFor(accId, { force: true }),
     refreshAccountInfo(accId),
@@ -26,6 +28,33 @@ function currentVmsEntry() {
 function abortVmsReads() {
   S.vmsReads.forEach((controller) => controller.abort());
   S.vmsReads.clear();
+}
+
+function abortActivityReads() {
+  S.activityReads.forEach((controller) => controller.abort());
+  S.activityReads.clear();
+}
+
+/** Instantly paint activity for an account from cache, or a loading placeholder. */
+function paintActivityFor(accId, { loading = false } = {}) {
+  const cached = accId ? S.activityCache.get(accId) : null;
+  if (cached) {
+    renderRecentTasks(cached.tasks || []);
+    renderOpLog(cached.logs || []);
+    return;
+  }
+  if (loading) {
+    const placeholder = `<div class="log-empty">加载中…</div>`;
+    S.recentTasks = [];
+    S.opLogLines = [];
+    fillScrollHost('recent-tasks', placeholder);
+    fillScrollHost('mo-recent-tasks', placeholder);
+    fillScrollHost('op-log', placeholder);
+    fillScrollHost('mo-op-log', placeholder);
+    return;
+  }
+  renderRecentTasks([]);
+  renderOpLog([]);
 }
 
 async function loadVmsFor(accId, { force = false } = {}) {
@@ -594,19 +623,21 @@ function renderTaskStrip() {
     <span class="task-count">${active} 个</span>`;
 }
 
-async function loadRecentTasks(accountId) {
+async function loadRecentTasks(accountId, { signal } = {}) {
   const accId = accountId || S.selectedAccId;
   if (!accId) {
     renderRecentTasks([]);
     return;
   }
   try {
-    const payload = await api('GET', `/api/accounts/${accId}/tasks`);
-    if (accId !== S.selectedAccId) return;
+    const payload = await api('GET', `/api/accounts/${accId}/tasks`, undefined, { signal });
+    if (signal?.aborted || accId !== S.selectedAccId) return;
     const items = Array.isArray(payload?.items) ? payload.items : [];
+    const prev = S.activityCache.get(accId) || { tasks: [], logs: [] };
+    S.activityCache.set(accId, { ...prev, tasks: items });
     renderRecentTasks(items);
   } catch (e) {
-    if (accId !== S.selectedAccId) return;
+    if (isAbortError(e) || signal?.aborted || accId !== S.selectedAccId) return;
     const html = `<div class="log-empty">任务列表加载失败：${esc(e.message)}</div>`;
     fillScrollHost('recent-tasks', html);
     fillScrollHost('mo-recent-tasks', html);
@@ -616,22 +647,38 @@ async function loadRecentTasks(accountId) {
 async function loadOpLogs(accountId) {
   const accId = accountId || S.selectedAccId;
   if (!accId) {
-    renderOpLog([]);
-    renderRecentTasks([]);
+    paintActivityFor(null);
     return;
   }
+
+  // Abort any previous account's in-flight activity reads so a late reply cannot
+  // briefly overwrite the newly selected account (the "one beat late" glitch).
+  S.activityReads.get(accId)?.abort();
+  const controller = new AbortController();
+  S.activityReads.set(accId, controller);
+  const { signal } = controller;
+
+  // Fetch independently so the faster of the two can paint without waiting.
+  const logsPromise = (async () => {
+    try {
+      const payload = await api('GET', `/api/accounts/${accId}/logs`, undefined, { signal });
+      if (signal.aborted || accId !== S.selectedAccId) return;
+      const logs = Array.isArray(payload?.items) ? payload.items : [];
+      const prev = S.activityCache.get(accId) || { tasks: [], logs: [] };
+      S.activityCache.set(accId, { ...prev, logs });
+      renderOpLog(logs);
+    } catch (e) {
+      if (isAbortError(e) || signal.aborted || accId !== S.selectedAccId) return;
+      const html = `<div class="log-empty">执行日志加载失败：${esc(e.message)}</div>`;
+      fillScrollHost('op-log', html);
+      fillScrollHost('mo-op-log', html);
+    }
+  })();
+
   try {
-    const [logsPayload] = await Promise.all([
-      api('GET', `/api/accounts/${accId}/logs`),
-      loadRecentTasks(accId),
-    ]);
-    if (accId !== S.selectedAccId) return;
-    renderOpLog(Array.isArray(logsPayload?.items) ? logsPayload.items : []);
-  } catch (e) {
-    if (accId !== S.selectedAccId) return;
-    const html = `<div class="log-empty">执行日志加载失败：${esc(e.message)}</div>`;
-    fillScrollHost('op-log', html);
-    fillScrollHost('mo-op-log', html);
+    await Promise.all([logsPromise, loadRecentTasks(accId, { signal })]);
+  } finally {
+    if (S.activityReads.get(accId) === controller) S.activityReads.delete(accId);
   }
 }
 
