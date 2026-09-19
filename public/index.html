@@ -35,9 +35,9 @@
       --amber-text: #92400e;
       --amber-soft: rgba(217, 119, 6, 0.12);
       --amber-line: rgba(217, 119, 6, 0.32);
-      --ok: #5c7f6a;
-      --ok-bg: rgba(92, 127, 106, 0.12);
-      --ok-text: #3a5546;
+      --ok: #22c55e;
+      --ok-bg: rgba(34, 197, 94, 0.12);
+      --ok-text: #15803d;
       --err: #c65746;
       --err-bg: rgba(198, 87, 70, 0.1);
       --err-text: #8a3a30;
@@ -341,7 +341,7 @@
       border: 1px solid transparent; background: transparent;
       transition: background var(--t), border-color var(--t);
     }
-    .acc-card:hover { background: var(--bg-soft); }
+    .acc-card:hover { background: #eae4d8; }
     .acc-card.selected {
       background: var(--accent-soft);
       border-color: var(--accent-line);
@@ -368,7 +368,7 @@
       display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 20px; align-items: stretch;
     }
     .account-pane {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
+      background: #f3efe6; border: 1px solid #d9d0c2; border-radius: var(--rl);
       padding: 12px; display: flex; flex-direction: column; gap: 10px;
       min-height: 0; height: 100%; overflow: hidden;
     }
@@ -390,7 +390,7 @@
     .account-list { overflow: auto; padding-right: 2px; flex: 1; min-height: 0; }
     .account-pane-foot {
       display: flex; gap: 6px; padding-top: 8px;
-      border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+      border-top: 1px solid #d9d0c2;
     }
     .account-pane-foot .btn { flex: 1; padding: 0 4px; min-height: 26px; font-size: 11px; }
     .account-pane .acc-grid { grid-template-columns: 1fr; gap: 2px; align-content: start; }
@@ -405,7 +405,7 @@
     }
     /* Account header: identity + figures + actions in one card. */
     .acc-head {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
+      background: #fffefb; border: 1px solid #d4dbe6; border-radius: var(--rl);
       padding: 14px 16px 10px; margin-bottom: 0; flex-shrink: 0;
     }
     .acc-head-top {
@@ -416,7 +416,7 @@
     .acc-actions { flex-shrink: 0; }
     /* Inside the card the insight bar is a section, not a standalone box. */
     .acc-head .insight-bar {
-      border: 0; border-top: 1px solid var(--line); border-radius: 0;
+      border: 0; border-top: 1px solid #e1e6ee; border-radius: 0;
       background: transparent; padding: 10px 0 0; margin: 12px 0 0;
     }
     /* 账户摘要：单行紧凑统计条 */
@@ -544,10 +544,10 @@
       border-radius: var(--rl); box-shadow: var(--shadow);
     }
     .vm-row {
-      background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--rl);
+      background: #fbfcfd; border: 1px solid #d2d8e0; border-radius: var(--rl);
       box-shadow: var(--shadow); padding: 16px 18px;
     }
-    .vm-row:hover { background: var(--bg-soft); }
+    .vm-row:hover { background: #f1f4f8; }
     .vm-line1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .vm-line2 {
       display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px;
@@ -557,7 +557,7 @@
       flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
       font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap;
     }
-    .vm-state.ok, .fleet-status.ok { color: var(--ok-text); }
+    .vm-state.ok, .fleet-status.ok { color: #16a34a; font-weight: 650; }
     .vm-state.err, .fleet-status.err { color: var(--err-text); }
     .vm-state.warn, .fleet-status.warn { color: var(--amber-text); }
     .vm-name {
@@ -620,7 +620,10 @@
       display: inline-block; width: 8px; height: 8px; border-radius: 50%;
       background: var(--text-3); vertical-align: middle;
     }
-    .dot.ok   { background: var(--ok); }
+    .dot.ok {
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.28);
+    }
     .dot.err  { background: var(--err); }
     .dot.warn { background: var(--amber); }
     .dot.inf  { background: var(--text-3); }
@@ -667,22 +670,22 @@
 
     .log-panel {
       flex: 0 0 210px; min-height: 180px; max-height: 240px; margin-top: auto;
-      background: var(--bg-card); border: 1px solid var(--line);
+      background: #243028; border: 1px solid #1a221c;
       border-radius: var(--rl); box-shadow: var(--shadow); overflow: hidden;
-      display: flex; flex-direction: column;
+      display: flex; flex-direction: column; color: #d7e8d9;
     }
     .log-panel-h {
-      padding: 10px 14px; border-bottom: 1px solid var(--line);
-      font-size: 13px; font-weight: 750;
+      padding: 10px 14px; border-bottom: 1px solid #334038;
+      font-size: 13px; font-weight: 750; color: #a8c4ad;
     }
     .log-viewer {
       flex: 1; min-height: 0; overflow: auto;
-      padding: 10px 14px; background: #f3f6f4;
-      font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: #2d6a3f;
+      padding: 10px 14px; background: #1a221c;
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: #4fce73;
     }
     .op-log-line { white-space: pre-wrap; word-break: break-word; }
-    .op-log-line.err { color: var(--err-text); }
-    .log-empty { color: var(--text-3); }
+    .op-log-line.err { color: #f0a8a0; }
+    .log-empty { color: #7a9580; }
 
     /* ── Modal ───────────────────────────────────── */
     .mo {
