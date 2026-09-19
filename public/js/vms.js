@@ -492,29 +492,20 @@ function formatLogTime(iso) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function renderOpLog(lines) {
-  const host = $('op-log');
-  if (!host) return;
-  if (!lines.length) {
-    host.innerHTML = `<div class="log-empty">暂无执行日志</div>`;
-    return;
-  }
-  host.innerHTML = lines.map((line) => {
+function opLogHtml(lines) {
+  const rows = Array.isArray(lines) ? lines : [];
+  if (!rows.length) return `<div class="log-empty">暂无执行日志</div>`;
+  return rows.map((line) => {
     const cls = String(line.level || '').toLowerCase() === 'error' ? ' err' : '';
     return `<div class="op-log-line${cls}">[${esc(formatLogTime(line.createdAt))}] ${esc(line.message || '')}</div>`;
   }).join('');
-  host.scrollTop = host.scrollHeight;
 }
 
-function renderRecentTasks(items) {
-  const host = $('recent-tasks');
-  if (!host) return;
-  const rows = Array.isArray(items) ? items.slice(0, 8) : [];
-  if (!rows.length) {
-    host.innerHTML = `<div class="log-empty">暂无任务</div>`;
-    return;
-  }
-  host.innerHTML = rows.map((task) => {
+function recentTasksHtml(items, { limit = 0 } = {}) {
+  let rows = Array.isArray(items) ? items : [];
+  if (limit > 0) rows = rows.slice(0, limit);
+  if (!rows.length) return `<div class="log-empty">暂无任务</div>`;
+  return rows.map((task) => {
     const status = String(task.status || '');
     const cls = status === 'success' ? 'ok'
       : status === 'failure' ? 'fail'
@@ -532,6 +523,60 @@ function renderRecentTasks(items) {
     </div>`;
   }).join('');
 }
+
+function fillScrollHost(id, html, stickBottom = false) {
+  const host = $(id);
+  if (!host) return;
+  host.innerHTML = html;
+  if (stickBottom) host.scrollTop = host.scrollHeight;
+}
+
+function renderOpLog(lines) {
+  S.opLogLines = Array.isArray(lines) ? lines : [];
+  const html = opLogHtml(S.opLogLines);
+  fillScrollHost('op-log', html, true);
+  fillScrollHost('mo-op-log', html, true);
+}
+
+function renderRecentTasks(items) {
+  S.recentTasks = Array.isArray(items) ? items : [];
+  fillScrollHost('recent-tasks', recentTasksHtml(S.recentTasks, { limit: 12 }));
+  fillScrollHost('mo-recent-tasks', recentTasksHtml(S.recentTasks));
+}
+
+function setActivityTab(tab, { syncModal = true } = {}) {
+  const next = tab === 'logs' ? 'logs' : 'tasks';
+  S.activityTab = next;
+
+  const apply = (tasksPaneId, logsPaneId, tasksTabId, logsTabId) => {
+    const tasksPane = $(tasksPaneId);
+    const logsPane = $(logsPaneId);
+    const tasksTab = $(tasksTabId);
+    const logsTab = $(logsTabId);
+    const showTasks = next === 'tasks';
+    tasksPane?.classList.toggle('hidden', !showTasks);
+    logsPane?.classList.toggle('hidden', showTasks);
+    tasksTab?.classList.toggle('active', showTasks);
+    logsTab?.classList.toggle('active', !showTasks);
+    if (tasksTab) tasksTab.setAttribute('aria-selected', showTasks ? 'true' : 'false');
+    if (logsTab) logsTab.setAttribute('aria-selected', showTasks ? 'false' : 'true');
+  };
+
+  apply('pane-recent-tasks', 'pane-op-log', 'log-tab-tasks', 'log-tab-logs');
+  if (syncModal) {
+    apply('mo-pane-recent-tasks', 'mo-pane-op-log', 'mo-log-tab-tasks', 'mo-log-tab-logs');
+  }
+}
+window.setActivityTab = setActivityTab;
+
+function openActivityModal() {
+  // Ensure modal mirrors current panel data/tab before opening.
+  renderRecentTasks(S.recentTasks || []);
+  renderOpLog(S.opLogLines || []);
+  setActivityTab(S.activityTab || 'tasks');
+  openModal('mo-activity');
+}
+window.openActivityModal = openActivityModal;
 
 function renderTaskStrip() {
   const host = $('task-strip');
@@ -552,7 +597,6 @@ function renderTaskStrip() {
 async function loadRecentTasks(accountId) {
   const accId = accountId || S.selectedAccId;
   if (!accId) {
-    S.recentTasks = [];
     renderRecentTasks([]);
     return;
   }
@@ -560,12 +604,12 @@ async function loadRecentTasks(accountId) {
     const payload = await api('GET', `/api/accounts/${accId}/tasks`);
     if (accId !== S.selectedAccId) return;
     const items = Array.isArray(payload?.items) ? payload.items : [];
-    S.recentTasks = items;
     renderRecentTasks(items);
   } catch (e) {
     if (accId !== S.selectedAccId) return;
-    const host = $('recent-tasks');
-    if (host) host.innerHTML = `<div class="log-empty">任务列表加载失败：${esc(e.message)}</div>`;
+    const html = `<div class="log-empty">任务列表加载失败：${esc(e.message)}</div>`;
+    fillScrollHost('recent-tasks', html);
+    fillScrollHost('mo-recent-tasks', html);
   }
 }
 
@@ -585,8 +629,9 @@ async function loadOpLogs(accountId) {
     renderOpLog(Array.isArray(logsPayload?.items) ? logsPayload.items : []);
   } catch (e) {
     if (accId !== S.selectedAccId) return;
-    const host = $('op-log');
-    if (host) host.innerHTML = `<div class="log-empty">执行日志加载失败：${esc(e.message)}</div>`;
+    const html = `<div class="log-empty">执行日志加载失败：${esc(e.message)}</div>`;
+    fillScrollHost('op-log', html);
+    fillScrollHost('mo-op-log', html);
   }
 }
 

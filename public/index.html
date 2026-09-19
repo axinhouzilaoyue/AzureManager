@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Azure Manager</title>
   <link rel="icon" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSsYQJ62ZWymNgjtplmh_exEK3yrVnfelJ68EgmjTTQqw&amp;s" />
-  <link rel="stylesheet" href="/app.css?v=20260322c" />
+  <link rel="stylesheet" href="/app.css?v=20260322d" />
 
 </head>
 <body>
@@ -182,10 +182,28 @@
               <div id="task-strip" class="task-strip hidden" aria-live="polite"></div>
               <div id="vm-list" class="vm-list"></div>
               <section class="log-panel" aria-label="最近任务与执行日志">
-                <div class="log-panel-h">最近任务</div>
-                <div id="recent-tasks" class="recent-tasks"><div class="log-empty">暂无任务</div></div>
-                <div class="log-panel-h" style="margin-top:10px">执行日志</div>
-                <div id="op-log" class="log-viewer"><div class="log-empty">暂无执行日志</div></div>
+                <div class="log-panel-h">
+                  <div class="log-tabs" role="tablist" aria-label="活动记录">
+                    <button type="button" class="log-tab active" role="tab" aria-selected="true" data-log-tab="tasks" id="log-tab-tasks">最近任务</button>
+                    <button type="button" class="log-tab" role="tab" aria-selected="false" data-log-tab="logs" id="log-tab-logs">执行日志</button>
+                  </div>
+                  <button type="button" class="log-expand" id="btn-expand-activity" title="放大查看" aria-label="放大查看">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <polyline points="9 21 3 21 3 15"></polyline>
+                      <line x1="21" y1="3" x2="14" y2="10"></line>
+                      <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div class="log-panel-body">
+                  <div id="pane-recent-tasks" class="log-pane" role="tabpanel">
+                    <div id="recent-tasks" class="recent-tasks"><div class="log-empty">暂无任务</div></div>
+                  </div>
+                  <div id="pane-op-log" class="log-pane hidden" role="tabpanel">
+                    <div id="op-log" class="log-viewer"><div class="log-empty">暂无执行日志</div></div>
+                  </div>
+                </div>
               </section>
             </div>
           </main>
@@ -584,6 +602,27 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
   </div>
 </div>
 
+<!-- Modal: 活动记录放大 -->
+<div id="mo-activity" class="mo hidden">
+  <div class="md md-xl md-activity">
+    <div class="md-h">
+      <div class="log-tabs log-tabs-lg" role="tablist" aria-label="活动记录">
+        <button type="button" class="log-tab active" role="tab" aria-selected="true" data-log-tab="tasks" id="mo-log-tab-tasks">最近任务</button>
+        <button type="button" class="log-tab" role="tab" aria-selected="false" data-log-tab="logs" id="mo-log-tab-logs">执行日志</button>
+      </div>
+      <button class="md-x" data-close="mo-activity" type="button">×</button>
+    </div>
+    <div class="md-b md-activity-body">
+      <div id="mo-pane-recent-tasks" class="log-pane">
+        <div id="mo-recent-tasks" class="recent-tasks recent-tasks-lg"><div class="log-empty">暂无任务</div></div>
+      </div>
+      <div id="mo-pane-op-log" class="log-pane hidden">
+        <div id="mo-op-log" class="log-viewer log-viewer-lg"><div class="log-empty">暂无执行日志</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: 任务详情 -->
 <div id="mo-task" class="mo hidden">
   <div class="md md-lg">
@@ -707,11 +746,11 @@ subscriptionId=yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy</pre>
 
 <div id="vm-ops-menu" class="ops-menu hidden" role="menu" aria-label="虚拟机操作"></div>
 
-<script src="/js/core.js?v=20260322c"></script>
-<script src="/js/overview.js?v=20260322c"></script>
-<script src="/js/accounts.js?v=20260322c"></script>
-<script src="/js/vms.js?v=20260322c"></script>
-<script src="/js/forms.js?v=20260322c"></script>
-<script src="/js/settings-auth.js?v=20260322c"></script>
+<script src="/js/core.js?v=20260322d"></script>
+<script src="/js/overview.js?v=20260322d"></script>
+<script src="/js/accounts.js?v=20260322d"></script>
+<script src="/js/vms.js?v=20260322d"></script>
+<script src="/js/forms.js?v=20260322d"></script>
+<script src="/js/settings-auth.js?v=20260322d"></script>
 </body>
 </html>

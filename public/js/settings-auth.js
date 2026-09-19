@@ -164,6 +164,12 @@ function bindUI() {
     if (t.closest('#btn-back-accounts')) return void backToAccountList();
     if (t.closest('#btn-create-vm')) return void openCreateVmDialog();
     if (t.closest('#btn-submit-vm')) return void submitCreateVm();
+    if (t.closest('#btn-expand-activity')) return void openActivityModal();
+    const logTab = t.closest('[data-log-tab]');
+    if (logTab) {
+      setActivityTab(logTab.getAttribute('data-log-tab'));
+      return;
+    }
     if (t.closest('#btn-refresh-vms')) return void refreshWorkspace();
     if (t.closest('#btn-refresh-summary')) return void refreshAccountSummary(S.selectedAccId);
     if (t.closest('#btn-refresh-all-accounts')) return void refreshAllAccounts();
@@ -254,6 +260,7 @@ function bindUI() {
 
 async function init() {
   bindUI();
+  setActivityTab(S.activityTab || 'tasks');
   try {
     const session = await api('GET', '/api/session');
     if (!session.loggedIn) return;

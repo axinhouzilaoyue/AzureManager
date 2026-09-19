@@ -30,6 +30,9 @@ const S = {
   summaryRefreshing: false,
   refreshAllRunning: false,
   recentTasks: [],
+  opLogLines: [],
+  // 'tasks' | 'logs' — shared by the bottom panel and the expand modal
+  activityTab: 'tasks',
 };
 
 // ── api ───────────────────────────────────────────────────────
